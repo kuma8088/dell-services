@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyTest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated procedures (keep structure but ignore content)
+generated_procedures/*.json
+generated_procedures/*.md
+generated_procedures/management/
+generated_procedures/progressive_learning/
+
+# Development and test files
+development/.pytest_cache/
+development/demo_*/
+development/generated_procedure.md
+
+# Test verification files
+test_verification/
+
+# Temporary files
+*.tmp
+*.temp
