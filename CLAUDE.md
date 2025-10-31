@@ -8,6 +8,17 @@ This is a KVM-based AWS simulation infrastructure project on Dell WorkStation ru
 
 **Key Philosophy**: Build progressively from minimal KVM setup (Phase 1) → AWS-equivalent virtual networking (Phase 2) → container orchestration (Phase 3+), documenting each phase through AI-generated procedure documents.
 
+### Repository Nature
+
+**This is a documentation-first infrastructure repository**, not a software development project:
+- **Primary Deliverable**: Step-by-step procedural documentation for infrastructure setup
+- **No Application Code**: No Python/Node.js/etc. application code to build, test, or deploy
+- **Infrastructure as Documentation**: The "code" is bash commands in markdown procedures
+- **Validation Method**: Procedures are validated by executing them on actual infrastructure
+- **Version Control**: Git tracks documentation iterations and infrastructure configuration files
+
+**AGENTS.md Context**: The AGENTS.md file references a separate AI procedure generator project that was used to create some of the initial procedures in this repository. It is not directly applicable to this infrastructure documentation project.
+
 ## Hardware Constraints
 
 **Dell WorkStation Specifications**:
@@ -163,7 +174,7 @@ docker network inspect <network>          # Network details
 ```
 project-root-infra/
 ├── Docs/infra/
-│   ├── procedures/
+│   ├── procedures/              # Step-by-step infrastructure setup procedures
 │   │   ├── 2-kvm/               # Phase 2: KVM setup procedures
 │   │   │   ├── 2.1-rocky-linux-kvm-host-setup.md
 │   │   │   └── 2.2-virtual-network-setup.md
@@ -177,9 +188,13 @@ project-root-infra/
 │   └── docker-specs/            # Docker infrastructure requirements
 │       ├── 3.0-DOCKER-INFRASTRUCTURE-REQUIREMENTS.md
 │       └── 3.0-DOCKER-INFRASTRUCTURE-DESIGN.md
-├── AGENTS.md                     # Development workflow guidelines
-└── CLAUDE.md                     # This file
+├── .venv/                       # Python virtual environment (superclaude package only)
+├── AGENTS.md                    # Note: References separate AI generator project (not this repo)
+├── CLAUDE.md                    # This file - Claude Code guidance
+└── README.md                    # Project overview
 ```
+
+**Note on AGENTS.md**: This file contains development workflow guidelines from a separate AI procedure generator project. It references Python development, testing, and build commands that **do not apply to this infrastructure documentation repository**. It was likely included as reference material during initial procedure generation but is not used for day-to-day work on this infrastructure project.
 
 ## Implementation Phases
 
@@ -235,6 +250,53 @@ Procedures in `procedures/` are AI-generated step-by-step guides with:
 3. Provide validation steps after each major action
 4. Document rollback/cleanup commands
 5. Estimate time requirements realistically
+
+### Procedure Validation Workflow
+
+**Before Committing New/Updated Procedures**:
+
+1. **Dry Run Validation** (if possible without destructive changes):
+   ```bash
+   # Check command syntax without execution
+   bash -n <(grep -A1 '```bash' procedure.md | grep -v '```')
+
+   # Verify prerequisite commands exist
+   which virsh docker systemctl  # etc.
+   ```
+
+2. **Test Execution** (required for new procedures):
+   - Execute procedure on a test environment or snapshot
+   - Document actual output vs expected output
+   - Note any deviations or required adjustments
+   - Capture error messages and resolutions
+
+3. **Documentation Review Checklist**:
+   - [ ] All commands are copy-paste ready (no placeholders like `<vm-name>`)
+   - [ ] Expected outputs match actual execution results
+   - [ ] Validation criteria are specific and measurable
+   - [ ] Troubleshooting section covers common failures
+   - [ ] Time estimates are realistic based on actual execution
+   - [ ] Rollback/cleanup commands are provided
+   - [ ] Prerequisites are clearly stated
+   - [ ] References to other procedures are accurate
+
+4. **Git Commit Message Format**:
+   ```
+   docs(phase-X): [action] procedure name
+
+   - What changed: Brief description of modifications
+   - Validation: Tested on [environment/snapshot]
+   - Results: [Success/Partial/Failed - explanation]
+   ```
+
+**Example**:
+```
+docs(phase-3): Update Docker environment setup monitoring section
+
+- What changed: Added fail2ban Docker API jail configuration
+- Validation: Tested on Phase 3 Docker host (fresh install)
+- Results: Success - all validation steps passed
+```
 
 ## Docker Storage Configuration
 
@@ -581,24 +643,94 @@ When working on Terraform configs:
 - Tag all resources with environment metadata
 - Maintain separate state files per environment
 
+## Documentation Workflow
+
+### When Creating or Updating Procedures
+
+**Step 1: Identify Need**
+- New phase implementation requires new procedure
+- Existing procedure has errors or outdated information
+- Infrastructure changes require procedure updates
+
+**Step 2: Draft Procedure**
+```bash
+# Create new procedure file
+touch Docs/infra/procedures/<phase>/<phase-number>-<procedure-name>.md
+
+# Use existing procedures as templates
+cat Docs/infra/procedures/2-kvm/2.1-rocky-linux-kvm-host-setup.md
+```
+
+**Step 3: Test and Validate**
+- Execute procedure on test environment or VM snapshot
+- Document actual outputs and any deviations
+- Update procedure based on test results
+- Repeat until procedure executes successfully
+
+**Step 4: Review and Commit**
+```bash
+# Check git status
+git status
+
+# Review changes
+git diff Docs/infra/procedures/<phase>/<file>.md
+
+# Stage changes
+git add Docs/infra/procedures/<phase>/<file>.md
+
+# Commit with structured message
+git commit -m "docs(phase-X): [add/update] procedure name
+
+- What changed: Brief description
+- Validation: Tested on [environment]
+- Results: Success/Partial/Notes"
+
+# Push to remote (if configured)
+git push origin main
+```
+
+**Step 5: Document Lessons Learned**
+- Update troubleshooting sections based on issues encountered
+- Add validation criteria that weren't obvious initially
+- Document time estimates based on actual execution
+- Update related specification documents if architecture changed
+
+### Current Work Status Tracking
+
+Before making changes, check the current modified files:
+```bash
+# See what's currently being worked on
+git status --short
+
+# View recent changes
+git log --oneline -10
+
+# See uncommitted changes in detail
+git diff Docs/infra/procedures/
+```
+
+**Modified Files**: The git status shows which procedures are currently being edited. Complete work on these before starting new procedures to avoid context switching.
+
 ## Repository Workflow
 
 **Before Starting Work**:
-1. Check current implementation phase in `.kiro/specs/*/tasks.md`
+1. Check current implementation phase status (git log, procedure completion markers)
 2. Review relevant procedure in `procedures/`
 3. Verify prerequisites are met
+4. Check for uncommitted changes: `git status`
 
 **During Implementation**:
 1. Follow procedure steps exactly as documented
-2. Document any deviations in procedure feedback
+2. Document any deviations or issues encountered
 3. Capture actual command output for validation
-4. Update task status in `tasks.md` when complete
+4. Take notes for procedure updates
 
 **After Completion**:
 1. Run comprehensive validation tests
 2. Document lessons learned
-3. Update procedure if needed
-4. Mark phase complete in tracking documents
+3. Update procedure if needed based on actual execution
+4. Commit procedure updates with validation notes
+5. Mark phase complete if all procedures validated
 
 ## Support Resources
 
