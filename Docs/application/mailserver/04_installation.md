@@ -1047,6 +1047,12 @@ RSPAMD_CPU_LIMIT=1.0
 RSPAMD_MEM_LIMIT=2g
 CLAMAV_CPU_LIMIT=1.0
 CLAMAV_MEM_LIMIT=2g
+
+# Postfixテンプレート用の可変値
+POSTFIX_RELAYHOST=[smtp.sendgrid.net]:587
+POSTFIX_MESSAGE_SIZE_LIMIT=26214400
+POSTFIX_TLS_CERT_FILE=/var/lib/tailscale/certs/tls.crt
+POSTFIX_TLS_KEY_FILE=/var/lib/tailscale/certs/tls.key
 EOF
 
 # ⚠️ 重要: 以下を必ず変更してください！
@@ -1060,50 +1066,13 @@ chmod 600 /opt/onprem-infra-system/project-root-infra/services/mailserver/.env
 
 ### 6.2 Postfix設定（SendGrid Relay専用）
 
-#### Postfix main.cf設定
+#### Postfix main.cfテンプレート
 
-```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/main.cf << 'EOF'
-# 基本設定
-myhostname = mail.kuma8088.com
-mydomain = kuma8088.com
-myorigin = $mydomain
-mydestination =
+`main.cf` は `config/postfix/main.cf.tmpl` にテンプレートとして保存されており、コンテナ起動時に `scripts/postfix-entrypoint.sh` が本番ファイルへレンダリングします。手動で `sed` を流す必要はありません。
 
-# ネットワーク設定
-inet_interfaces = all
-inet_protocols = ipv4
-mynetworks = 127.0.0.0/8, 172.20.0.0/24
-
-# SendGrid SMTP Relay設定
-relayhost = [smtp.sendgrid.net]:587
-smtp_sasl_auth_enable = yes
-smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-smtp_sasl_security_options = noanonymous
-smtp_tls_security_level = encrypt
-smtp_tls_note_starttls_offer = yes
-
-# メールボックス設定（受信はDovecot LMTP経由）
-virtual_mailbox_domains = kuma8088.com, fx-trader-life.com, webmakeprofit.org, webmakesprofit.com
-virtual_transport = lmtp:unix:private/dovecot-lmtp
-
-# メッセージサイズ制限
-message_size_limit = 26214400
-
-# SMTPD設定（Port 587受信用）
-smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, defer_unauth_destination
-smtpd_sasl_type = dovecot
-smtpd_sasl_path = private/auth
-smtpd_sasl_auth_enable = yes
-smtpd_tls_security_level = may
-smtpd_tls_cert_file = /var/lib/tailscale/certs/${MAGICDNS_NAME}.crt
-smtpd_tls_key_file = /var/lib/tailscale/certs/${MAGICDNS_NAME}.key
-EOF
-
-# MagicDNS名を実際の値に置換
-MAGICDNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName')
-sed -i "s/\${MAGICDNS_NAME}/$MAGICDNS_NAME/g" /opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/main.cf
-```
+- `.env` で `MAIL_DOMAIN` / `MAIL_HOSTNAME` / `MAIL_ADDITIONAL_DOMAINS` / `POSTFIX_RELAYHOST` / `POSTFIX_MESSAGE_SIZE_LIMIT` / `POSTFIX_TLS_CERT_FILE` / `POSTFIX_TLS_KEY_FILE` をセットします。
+- 起動時にテンプレート内の `{{...}}` プレースホルダが上記環境変数で置換され、`/etc/postfix/main.cf` が自動生成されます。
+- TLS 証明書名が変化しないよう、`tailscale cert --cert-file /var/lib/tailscale/certs/tls.crt --key-file ...` で固定名を発行しておくと運用が楽になります（詳細は `services/mailserver/README.md` を参照）。
 
 #### SendGrid認証情報設定
 
