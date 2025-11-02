@@ -63,6 +63,7 @@ services:
     container_name: mailserver-postfix
     hostname: ${MAIL_HOSTNAME}
     restart: always
+    entrypoint: ["/opt/mailserver/scripts/postfix-entrypoint.sh"]
     networks:
       mailserver_network:
         ipv4_address: 172.20.0.20
@@ -72,11 +73,19 @@ services:
       - HOSTNAME=${MAIL_HOSTNAME}
       - DOMAIN=${MAIL_DOMAIN}
       - TZ=${TZ}
+      - MAIL_DOMAIN=${MAIL_DOMAIN}
+      - MAIL_HOSTNAME=${MAIL_HOSTNAME}
+      - MAIL_ADDITIONAL_DOMAINS=${MAIL_ADDITIONAL_DOMAINS}
+      - POSTFIX_TLS_CERT_FILE=${POSTFIX_TLS_CERT_FILE}
+      - POSTFIX_TLS_KEY_FILE=${POSTFIX_TLS_KEY_FILE}
+      - POSTFIX_RELAYHOST=${POSTFIX_RELAYHOST}
+      - POSTFIX_MESSAGE_SIZE_LIMIT=${POSTFIX_MESSAGE_SIZE_LIMIT}
     volumes:
       - ./config/postfix:/etc/postfix/custom
       - mail_data:/var/mail/vhosts
       - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
       - ./logs/postfix:/var/log
+      - ./scripts:/opt/mailserver/scripts:ro
     depends_on:
       - rspamd
     deploy:
