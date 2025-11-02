@@ -232,9 +232,348 @@ project-root-infra/
 - Terraform state generation and GitHub integration
 
 ### Phase 6+: Service Deployment
-- Webmail service containerization
+- Webmail service containerization (🔄 IN PROGRESS - see Mailserver Application below)
 - Blog migration to containers
 - Commercial service development environment
+
+## Application Services
+
+### Mailserver Application (🔄 IN PROGRESS)
+
+**Location**: `/opt/onprem-infra-system/project-root-infra/services/mailserver/`
+
+**Architecture**: Hybrid Cloud Mail Server (AWS Fargate + Dell On-Premises + SendGrid)
+
+**Current Version**: v5.1 (Public IP Fargate configuration)
+
+#### Documentation Structure
+
+```
+Docs/application/mailserver/
+├── README.md                    # Overview and quick start guide
+├── 01_requirements.md           # v5.0 requirements (AWS Fargate + Dell + SendGrid + Tailscale VPN)
+├── 02_design.md                 # v5.0 system design and architecture
+├── 03_Firewall(RX-600KI).md     # NTT RX-600KI firewall configuration (if applicable)
+├── 04_installation.md           # v5.1 step-by-step installation procedures
+└── 05_testing.md                # Comprehensive testing procedures
+
+services/mailserver/
+├── docker-compose.yml           # Dell on-premises Docker stack definition
+├── .env                         # Environment variables (gitignored - contains secrets)
+├── config/                      # Service configurations (postfix, dovecot, nginx, etc.)
+├── data/                        # Persistent data (mail, database)
+├── logs/                        # Service logs
+├── backups/                     # Backup destination
+├── scripts/                     # Automation and validation scripts
+│   ├── validate-sg-rules.sh     # AWS Security Group validation
+│   ├── validate-docker-services.sh  # Docker service health checks
+│   ├── fetch-sendgrid-key.sh    # Secrets Manager retrieval
+│   ├── update-dns-on-restart.sh # Route53 DNS auto-update (Dynamic IP)
+│   └── update-cloudflare-dns.sh # Cloudflare DNS auto-update (Dynamic IP)
+└── terraform/                   # AWS infrastructure as code
+    └── main.tf                  # VPC, Security Groups, ECS, IAM, Elastic IP
+```
+
+#### Architecture Overview
+
+**v5.1 Configuration** (Simplified Public IP Fargate):
+
+```
+Internet
+  ↓ Port 25 (MX Record → Public IP/Elastic IP)
+AWS Fargate (Postfix MX Gateway with Public IP)
+  ↓ Tailscale VPN (LMTP Port 2525)
+Dell RockyLinux (Dovecot Mail Host + Docker Compose)
+  ↓ Port 587 (Authenticated SMTP)
+SendGrid SMTP Relay
+  ↓ Port 25
+External Mail Servers
+```
+
+**Key Components**:
+- **AWS Fargate**: MX gateway for inbound SMTP (Port 25) with Public IP or Elastic IP
+- **Tailscale VPN**: Secure overlay network between Fargate and Dell
+- **Dell Docker Compose Stack**: Dovecot (LMTP), Postfix (SendGrid relay), Roundcube (webmail), Rspamd (spam filter), ClamAV (antivirus), Nginx (reverse proxy), MariaDB (Roundcube database)
+- **SendGrid**: SaaS SMTP relay for outbound mail delivery (SPF/DKIM/DMARC)
+
+#### Important Notes
+
+**ALB Configuration**:
+- v5.0 used Application Load Balancer (ALB) - cost: ~$16.20/month
+- v5.1 simplified to Public IP Fargate direct reception (ALB removed)
+- ALB remains as optional future expansion for multi-AZ redundancy
+
+**IP Addressing**:
+- **Dynamic Public IP**: Default, IP changes on task restart (requires DNS updates)
+- **Elastic IP** (recommended): Fixed IP address, +$3.60/month
+
+**Supported Domains** (as of v5.0):
+- kuma8088.com
+- fx-trader-life.com
+- webmakeprofit.org
+- webmakesprofit.com
+
+#### Key Commands
+
+```bash
+# ============================================================================
+# Terraform Infrastructure Provisioning (Primary method for AWS resources)
+# ============================================================================
+cd /opt/onprem-infra-system/project-root-infra/services/mailserver/terraform
+
+# Initialize Terraform (first time only)
+terraform init
+
+# Preview infrastructure changes
+terraform plan
+
+# Apply infrastructure (VPC, Subnets, Security Groups, ECS, IAM, CloudWatch, Elastic IP)
+terraform apply
+
+# Export outputs to environment variables for subsequent CLI commands
+export FARGATE_SG_ID=$(terraform output -raw security_group_id)
+export ELASTIC_IP=$(terraform output -raw elastic_ip)
+export EXECUTION_ROLE_ARN=$(terraform output -raw execution_role_arn)
+export TASK_ROLE_ARN=$(terraform output -raw task_role_arn)
+
+# View infrastructure state
+terraform show
+terraform state list                      # List all managed resources
+terraform output                          # Show all outputs
+
+# Validate Terraform-managed infrastructure
+cd ../scripts
+./validate-terraform-resources.sh        # Comprehensive validation
+
+# Destroy infrastructure (CAUTION - PRODUCTION DATA LOSS)
+cd ../terraform
+terraform plan -destroy
+terraform destroy
+
+# ============================================================================
+# Docker Compose Operations (Dell on-premises services)
+# ============================================================================
+cd /opt/onprem-infra-system/project-root-infra/services/mailserver
+
+docker compose up -d                      # Start all mail services
+docker compose down                       # Stop all services
+docker compose ps                         # List service status
+docker compose logs -f <service>          # Follow logs (dovecot, postfix, roundcube, etc.)
+docker compose restart <service>          # Restart specific service
+
+# User management
+./scripts/add-user.sh admin@kuma8088.com password    # Add new user
+
+# Mailbox inspection
+ls -la data/mail/kuma8088.com/admin/new/  # Check new mail delivery
+
+# Service-specific logs
+docker compose logs postfix | grep -i sendgrid      # SendGrid relay logs
+docker compose logs dovecot | grep -i lmtp          # LMTP delivery logs
+docker compose logs rspamd | tail -50               # Spam filter logs
+
+# ============================================================================
+# Validation Scripts
+# ============================================================================
+./scripts/validate-terraform-resources.sh  # Comprehensive Terraform infrastructure validation
+./scripts/validate-sg-rules.sh $FARGATE_SG_ID  # Security Group rules validation (requires SG ID)
+./scripts/validate-docker-services.sh      # Docker services health check
+./scripts/fetch-sendgrid-key.sh            # Retrieve SendGrid API Key from Secrets Manager
+
+# DNS update scripts (for Dynamic IP configuration only)
+./scripts/update-dns-on-restart.sh         # Update Route53 DNS A record
+./scripts/update-cloudflare-dns.sh         # Update Cloudflare DNS A record
+
+# ============================================================================
+# AWS Fargate Operations (ECS task/service management)
+# ============================================================================
+# List running tasks
+aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service
+
+# Describe task details
+TASK_ARN=$(aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service --query 'taskArns[0]' --output text)
+aws ecs describe-tasks --cluster mailserver-cluster --tasks $TASK_ARN
+
+# View Fargate logs
+aws logs tail /ecs/mailserver-mx --follow
+
+# Get Fargate Public IP (useful for debugging connectivity)
+ENI_ID=$(aws ecs describe-tasks --cluster mailserver-cluster --tasks $TASK_ARN --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
+FARGATE_PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids $ENI_ID --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+echo "Fargate Public IP: $FARGATE_PUBLIC_IP"
+
+# ============================================================================
+# Tailscale VPN
+# ============================================================================
+tailscale status                          # Check VPN connection status
+tailscale ping mailserver                 # Test Fargate → Dell connectivity
+tailscale ip -4                           # Get Tailscale IPv4 address
+```
+
+#### Installation Workflow
+
+**Prerequisites**:
+1. AWS account with CLI configured (for Fargate deployment)
+2. Tailscale account with admin access
+3. SendGrid account with verified domains
+4. DNS management access (Cloudflare, Route53, etc.)
+5. Dell host with Docker Compose installed
+
+**Installation Order**:
+1. Read `01_requirements.md` - understand system requirements
+2. Read `02_design.md` - understand architecture
+3. Follow `04_installation.md` sections sequentially:
+   - **Section 3.1**: **Terraform AWS Infrastructure Provisioning** (VPC, Subnets, Security Groups, ECS Cluster, CloudWatch, IAM Roles, Elastic IP)
+   - **Section 3.2**: AWS Secrets Manager configuration (Tailscale Auth Key) - manual CLI
+   - Section 4: SendGrid integration (API key, domain authentication)
+   - Section 5: Tailscale VPN setup (Fargate + Dell)
+   - Section 6: Dell Docker Compose deployment + ECS Task/Service creation (manual CLI)
+   - Section 7: Integration testing (Fargate → Dell → SendGrid)
+   - Section 8: Automation setup (backups, monitoring)
+4. Execute `05_testing.md` - comprehensive validation
+
+**Estimated Time**: 4-6 hours for full deployment
+
+**Terraform vs AWS CLI Strategy**:
+- **Terraform manages**: Static infrastructure (VPC, networks, security groups, IAM, ECS cluster, CloudWatch, Elastic IP)
+- **AWS CLI manages**: Dynamic resources (Secrets Manager secrets, ECS Task Definitions, ECS Services)
+- **Rationale**: Secrets contain sensitive data (better managed manually/scripts), Task Definitions/Services change frequently during deployment
+
+#### Troubleshooting
+
+**Mail Reception Issues** (Fargate → Dell):
+```bash
+# Check Fargate Public IP
+TASK_ARN=$(aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service --query 'taskArns[0]' --output text)
+ENI_ID=$(aws ecs describe-tasks --cluster mailserver-cluster --tasks $TASK_ARN --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
+FARGATE_PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids $ENI_ID --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+echo "Fargate Public IP: $FARGATE_PUBLIC_IP"
+
+# Test external SMTP connectivity
+telnet $FARGATE_PUBLIC_IP 25
+
+# Check Dell LMTP listener
+docker exec mailserver-dovecot netstat -tuln | grep 2525
+
+# Check Tailscale VPN
+tailscale status
+```
+
+**Mail Delivery Issues** (Dell → SendGrid):
+```bash
+# Check SendGrid relay configuration
+docker compose logs postfix | grep -i sendgrid
+
+# Test SendGrid authentication
+docker exec mailserver-postfix postconf | grep relay
+```
+
+**DNS Configuration**:
+```bash
+# Verify MX record
+dig MX kuma8088.com
+
+# Verify A record (Elastic IP configuration)
+dig A mx.kuma8088.com
+
+# Verify SPF record
+dig TXT kuma8088.com | grep sendgrid
+
+# Verify DKIM
+dig CNAME s1._domainkey.kuma8088.com
+
+# Verify DMARC
+dig TXT _dmarc.kuma8088.com
+```
+
+#### Cost Breakdown
+
+**AWS Costs** (v5.1):
+- ECS Fargate (256 CPU, 512 MB): ~$5-10/month
+- Elastic IP (optional): $3.60/month
+- Secrets Manager: $0.40/month per secret (2 secrets = $0.80/month)
+- CloudWatch Logs: ~$1-2/month
+- **Total**: ~$7-14/month (without Elastic IP) or ~$11-18/month (with Elastic IP)
+
+**SendGrid Costs**:
+- Free tier: 100 emails/day
+- Essentials: $19.95/month (50,000 emails/month)
+
+**Dell On-Premises**: No recurring cloud costs
+
+#### Terraform Infrastructure Management
+
+**Location**: `/opt/onprem-infra-system/project-root-infra/services/mailserver/terraform/`
+
+**Managed Resources**:
+- VPC (10.0.0.0/16) with Internet Gateway
+- 2 Public Subnets (ap-northeast-1a: 10.0.1.0/24, ap-northeast-1b: 10.0.2.0/24)
+- Route Tables with default route to IGW
+- Security Group (Port 25 TCP, Port 41641 UDP inbound; all outbound)
+- Elastic IP allocation
+- ECS Cluster (mailserver-cluster with Container Insights)
+- CloudWatch Logs (/ecs/mailserver-mx, 30 days retention)
+- IAM Execution Role (ECS Task Execution with ECR/CloudWatch permissions)
+- IAM Task Role (Secrets Manager access for Tailscale Auth Key and SendGrid API Key)
+
+**Key Variables** (configurable in terraform.tfvars):
+```hcl
+aws_region            = "ap-northeast-1"  # Default region (Tokyo)
+environment           = "production"      # Environment tag
+vpc_cidr              = "10.0.0.0/16"     # VPC CIDR block
+cluster_name          = "mailserver-cluster"
+log_retention_days    = 30                # CloudWatch Logs retention
+```
+
+**Important Outputs**:
+- `vpc_id`, `security_group_id`, `elastic_ip` - Required for ECS task definition
+- `execution_role_arn`, `task_role_arn` - Required for ECS task/service creation
+- `cloudwatch_log_group_name` - Required for container log configuration
+
+**Workflow**:
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/mailserver/terraform
+
+# Initialize (first time only)
+terraform init
+
+# Plan changes (review before apply)
+terraform plan -out=tfplan
+
+# Apply infrastructure
+terraform apply tfplan
+
+# View current state
+terraform show
+
+# Get output values
+terraform output elastic_ip
+terraform output security_group_id
+
+# Destroy infrastructure (CAUTION - production data loss)
+terraform destroy
+```
+
+**Manual Steps After Terraform Apply**:
+1. Validate infrastructure: `./scripts/validate-terraform-resources.sh`
+2. Export Terraform outputs to environment variables (required for subsequent commands)
+3. Create Secrets in AWS Secrets Manager (Section 3.2):
+   - `mailserver/tailscale/fargate-auth-key` - Tailscale Auth Key for Fargate
+   - `mailserver/sendgrid/api-key` - SendGrid API Key (optional - can be local file)
+4. Update DNS MX record to point to `terraform output elastic_ip`
+5. Create ECS Task Definition via AWS CLI (Section 6 - deployment-specific, not in Terraform)
+6. Create ECS Service via AWS CLI (Section 6 - deployment-specific, not in Terraform)
+
+#### Security Considerations
+
+**Critical Security Settings**:
+- Port 25 exposed to internet (0.0.0.0/0) on Fargate - required for MX gateway
+- Tailscale VPN encryption between Fargate and Dell
+- SELinux enforcing mode on Dell host
+- fail2ban configured for SSH protection
+- SendGrid API key stored in AWS Secrets Manager
+- Roundcube accessible only via Tailscale VPN (no public exposure)
+- IAM Task Role uses principle of least privilege (Secrets Manager read-only for specific secrets)
 
 ## Working with Procedures
 

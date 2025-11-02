@@ -1,0 +1,243 @@
+# version: '3.8'
+
+networks:
+  mailserver_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+volumes:
+  mail_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/mail
+  db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/db
+  rspamd_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/rspamd
+  clamav_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/clamav
+
+services:
+  # MariaDB データベース
+  mariadb:
+    image: mariadb:10.11.7
+    container_name: mailserver-mariadb
+    hostname: mariadb
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.60
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - TZ=${TZ}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Postfix MTA (SendGrid Relay専用)
+  postfix:
+    image: postfix:3.8-alpine
+    container_name: mailserver-postfix
+    hostname: ${MAIL_HOSTNAME}
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.20
+    ports:
+      - "587:587"
+    environment:
+      - HOSTNAME=${MAIL_HOSTNAME}
+      - DOMAIN=${MAIL_DOMAIN}
+      - TZ=${TZ}
+    volumes:
+      - ./config/postfix:/etc/postfix/custom
+      - mail_data:/var/mail/vhosts
+      - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
+      - ./logs/postfix:/var/log
+    depends_on:
+      - rspamd
+    deploy:
+      resources:
+        limits:
+          cpus: '${POSTFIX_CPU_LIMIT}'
+          memory: '${POSTFIX_MEM_LIMIT}'
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "587" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Dovecot MDA (LMTP + IMAP/POP3)
+  dovecot:
+    image: dovecot/dovecot:2.3.21
+    container_name: mailserver-dovecot
+    hostname: dovecot
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.30
+    ports:
+      - "2525:2525" # LMTP (Fargate → Dell)
+      - "993:993" # IMAPS
+      - "995:995" # POP3S
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/dovecot:/etc/dovecot/custom
+      - mail_data:/var/mail/vhosts
+      - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
+      - ./logs/dovecot:/var/log
+    deploy:
+      resources:
+        limits:
+          cpus: '${DOVECOT_CPU_LIMIT}'
+          memory: ${DOVECOT_MEM_LIMIT}
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "2525" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Rspamd スパムフィルタ
+  rspamd:
+    image: rspamd/rspamd:3.8
+    container_name: mailserver-rspamd
+    hostname: rspamd
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.70
+    volumes:
+      - rspamd_data:/var/lib/rspamd
+      - ./config/rspamd:/etc/rspamd/override.d
+      - ./logs/rspamd:/var/log/rspamd
+    environment:
+      - TZ=${TZ}
+    depends_on:
+      - clamav
+    deploy:
+      resources:
+        limits:
+          cpus: '${RSPAMD_CPU_LIMIT}'
+          memory: ${RSPAMD_MEM_LIMIT}
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:11334/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ClamAV ウイルススキャン
+  clamav:
+    image: clamav/clamav:1.3
+    container_name: mailserver-clamav
+    hostname: clamav
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.80
+    volumes:
+      - clamav_data:/var/lib/clamav
+      - ./logs/clamav:/var/log/clamav
+    environment:
+      - TZ=${TZ}
+    deploy:
+      resources:
+        limits:
+          cpus: '${CLAMAV_CPU_LIMIT}'
+          memory: ${CLAMAV_MEM_LIMIT}
+    healthcheck:
+      test: [ "CMD", "/usr/local/bin/clamdcheck.sh" ]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # Roundcube Webmail
+  roundcube:
+    image: roundcube/roundcubemail:1.6.7-apache
+    container_name: mailserver-roundcube
+    hostname: roundcube
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.40
+    environment:
+      - ROUNDCUBEMAIL_DB_TYPE=mysql
+      - ROUNDCUBEMAIL_DB_HOST=mariadb
+      - ROUNDCUBEMAIL_DB_NAME=${MYSQL_DATABASE}
+      - ROUNDCUBEMAIL_DB_USER=${MYSQL_USER}
+      - ROUNDCUBEMAIL_DB_PASSWORD=${MYSQL_PASSWORD}
+      - ROUNDCUBEMAIL_DEFAULT_HOST=ssl://dovecot
+      - ROUNDCUBEMAIL_DEFAULT_PORT=993
+      - ROUNDCUBEMAIL_SMTP_SERVER=tls://postfix
+      - ROUNDCUBEMAIL_SMTP_PORT=587
+      - ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE=25M
+      - ROUNDCUBEMAIL_DES_KEY=${ROUNDCUBE_DES_KEY}
+      - TZ=${TZ}
+    volumes:
+      - ./config/roundcube:/var/roundcube/config
+      - ./logs/roundcube:/var/log/roundcube
+    depends_on:
+      - mariadb
+      - dovecot
+      - postfix
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:1.26-alpine
+    container_name: mailserver-nginx
+    hostname: nginx
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.10
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
+      - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - roundcube
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

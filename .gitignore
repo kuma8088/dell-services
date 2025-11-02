@@ -57,4 +57,19 @@ test_verification/
 
 # Temporary files
 *.tmp
-*.temp
+*.temp.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform/
+**/.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfstate.*
+.terraform.lock.hcl
+**/.terraform.lock.hcl
+*.tfvars
+*.tfvars.json
+
+# Local environment secrets
+.env
+*.env

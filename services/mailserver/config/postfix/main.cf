@@ -1,0 +1,34 @@
+# 基本設定
+myhostname = mail.kuma8088.com
+mydomain = kuma8088.com
+myorigin = $mydomain
+mydestination =
+
+# ネットワーク設定
+inet_interfaces = all
+inet_protocols = ipv4
+mynetworks = 127.0.0.0/8, 172.20.0.0/24
+
+# Sendgrid SMTP Relay設定
+relayhost = [smtp.sendgrid.net]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = encrypt
+smtp_tls_note_starttls_offer = yes
+
+# メールボックス設定（受信はDovecot LMTP経由）
+virtual_mailbox_domains = kuma8088.com, fx-trader-life.com, webmakeprofit.org, webmakesprofit.com
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+
+# メッセージサイズ制限
+message_size_limit = 26214400
+
+# SMTPD設定（Port 587受信用）
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, defer_unauth_destination
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+smtpd_tls_security_level = may
+smtpd_tls_cert_file = /var/lib/tailscale/certs/${MAGICDNS_NAME}.crt
+smtpd_tls_key_file = /var/lib/tailscale/certs/${MAGICDNS_NAME}.key 
