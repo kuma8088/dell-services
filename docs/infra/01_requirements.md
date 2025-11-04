@@ -1,10 +1,10 @@
 # メールサーバー構築プロジェクト - 要件定義書
 
-**文書バージョン**: 5.0
-**作成日**: 2025-10-31（初版）/ 2025-10-31（v2.0改訂）/ 2025-10-31（v2.1改訂）/ 2025-11-01（v3.0改訂）/ 2025-11-01（v4.0改訂）/ 2025-11-01（v5.0改訂）
-**対象環境**: AWS Fargate（MXゲートウェイ） + Dell RockyLinux 9.6（メール本体） + Tailscale VPN
-**プロジェクト種別**: 個人利用（Tailscale VPNプライベートアクセス + AWS Fargate MXゲートウェイ）
-**構築方式**: AWS ECS Fargate Postfix（MX） + Dell Docker Compose（Dovecot/Roundcube） + SendGrid SMTP Relay（送信）
+**文書バージョン**: 6.0
+**作成日**: 2025-10-31（初版）/ 2025-10-31（v2.0改訂）/ 2025-10-31（v2.1改訂）/ 2025-11-01（v3.0改訂）/ 2025-11-01（v4.0改訂）/ 2025-11-01（v5.0改訂）/ 2025-11-04（v6.0改訂）
+**対象環境**: AWS EC2（MXゲートウェイ） + Dell RockyLinux 9.6（メール本体） + Tailscale VPN
+**プロジェクト種別**: 個人利用（Tailscale VPNプライベートアクセス + AWS EC2 MXゲートウェイ）
+**構築方式**: AWS EC2 Postfix（MX） + Dell Docker Compose（Dovecot/Roundcube） + SendGrid SMTP Relay（送信）
 
 ---
 
@@ -136,15 +136,17 @@ Xserver WEBメール機能相当のメールサーバーを**AWS Fargate（MXゲ
 | カテゴリ | 要件 | 実装方法 |
 |----------|------|----------|
 | **通信暗号化** | 全プロトコルSSL/TLS必須 | Tailscale HTTPS証明書（自動発行） |
+| **TLS Cipher Suite** | 最新メールクライアント対応の暗号化スイート（8種類以上） | ECDHE-ECDSA/ECDHE-RSA/ChaCha20-Poly1305/DHE-RSA（TLS 1.2/1.3互換） |
+| **TLS最小バージョン** | TLSv1.2以上 | ssl_min_protocol = TLSv1.2 |
 | **認証** | パスワード認証 | PLAIN/LOGIN over TLS |
 | **ネットワークアクセス制御** | Tailscale VPN経由のみ | TailscaleプライベートネットワークでIP制限 |
 | **送信ドメイン認証** | SPF/DKIM/DMARC設定 | SendGrid DNS設定（自動管理） |
-| **Fargate-Dell間通信** | Tailscale VPN暗号化トンネル | Fargateコンテナ内Tailscaleクライアント |
+| **EC2-Dell間通信** | Tailscale VPN暗号化トンネル | EC2インスタンス内Tailscaleクライアント |
 | **コンテナ分離** | 各サービス独立コンテナ | Docker Composeネットワーク分離 |
-| **Secret管理** | パスワード・認証情報保護 | `.env`（600権限）+ AWS Secrets Manager（Fargate） |
+| **Secret管理** | パスワード・認証情報保護 | `.env`（600権限）+ AWS Secrets Manager（EC2） |
 | **非rootコンテナ** | root権限最小化 | コンテナ内非rootユーザー実行 |
 | **パスワードポリシー** | 8文字以上推奨 | 管理者が設定 |
-| **ログ保存** | 30日間保存 | CloudWatch Logs（Fargate） + Dockerログドライバー（Dell） |
+| **ログ保存** | 30日間保存 | CloudWatch Logs（EC2） + ファイルベースログ（Dell） |
 | **SendGrid API Key** | 環境変数保護 | AWS Secrets Manager統合 |
 
 ### 3.5 運用性要件
@@ -163,9 +165,12 @@ Xserver WEBメール機能相当のメールサーバーを**AWS Fargate（MXゲ
 
 | カテゴリ | 要件 | 対応 |
 |----------|------|------|
-| **メールクライアント** | 標準プロトコル対応 | IMAP/POP3/SMTP |
+| **メールクライアント** | 標準プロトコル対応 + 最新TLS Cipher | IMAP/POP3/SMTP + TLS 1.2/1.3対応 |
 | **WEBブラウザ** | Chrome, Firefox, Safari, Edge | 最新版および1世代前 |
-| **スマートフォン** | iOS Mail, Android Gmail | 標準メールアプリ |
+| **スマートフォン** | iOS Mail (iOS 11+), Android Gmail (Android 7+) | 標準メールアプリ |
+| **デスクトップ** | macOS Mail (10.12+), Thunderbird, Outlook | TLS 1.2以上対応 |
+| **アクセス要件** | Tailscale VPNホスト名必須 | IPアドレス不可、MagicDNS必須 |
+| **TLS証明書** | Tailscale HTTPS証明書（Let's Encrypt） | 初回接続時に承認必要 |
 | **文字コード** | UTF-8, ISO-2022-JP | 日本語対応 |
 
 ---
@@ -497,15 +502,24 @@ Xserver WEBメール機能相当のメールサーバーを**AWS Fargate（MXゲ
 | 3.0 | 2025-11-01 | Tailscale VPN前提への全面改訂（個人利用プライベートアクセス化） | Claude |
 | 4.0 | 2025-11-01 | ハイブリッド構成改訂（AWS EC2 + Dell RockyLinux + Tailscale VPN） | Claude |
 | 5.0 | 2025-11-01 | サーバーレス化改訂（AWS Fargate + Dell + SendGrid + Tailscale VPN） | Claude |
+| 6.0 | 2025-11-04 | **EC2回帰 + TLS Cipher拡張 + ファイルログ + メールクライアント互換性強化** | Claude |
+
+**v6.0 主要変更点（v5.0からの改訂）:**
+- **AWS Fargate → EC2回帰**: Tailscale VPN互換性問題によりEC2ベース構成へ移行（詳細: `troubleshoot/INBOUND_MAIL_FAILURE_2025-11-03.md`）
+- **TLS Cipher Suite拡張**: 2種類 → 8種類へ拡張（ECDHE-ECDSA/ECDHE-RSA/ChaCha20-Poly1305/DHE-RSA追加）
+  - 最新メールクライアント対応（macOS Mail, iOS Mail, Android Gmail等）
+  - TLS 1.2/1.3互換、モバイル端末最適化（ChaCha20-Poly1305）
+- **ファイルベースログ有効化**: 認証・SSL/TLS詳細ログをファイルに記録
+  - `log_path`, `info_log_path`, `debug_log_path`
+  - `auth_verbose=yes`, `verbose_ssl=yes`
+- **Postfix-Dovecot SASL統合**: submission port (587) での認証強化
+  - `postfix_spool`ボリューム共有、`/var/spool/postfix/private/auth`ソケット
+- **メールクライアント互換性要件明確化**:
+  - Tailscale VPN ホスト名必須（IPアドレス不可）
+  - TLS証明書初回承認要件
+  - 対応OS/バージョン明記（macOS 10.12+, iOS 11+, Android 7+）
+- **トラブルシューティング文書化**: `MAIL_CLIENT_LOGIN_FAILURE_2025-11-04.md`作成
 
 **v5.0 主要変更点（v4.0からの改訂）:**
-- **AWS EC2 → AWS Fargate移行**: サーバーレス化によりホスト管理不要、使用量ベース課金でコスト最適化
-- **SendGrid SMTP Relay追加**: 外部送信専用にSendGridを採用、Dell側はPort 587/TLS経由で送信
-- **送信ドメイン認証管理**: SPF/DKIM/DMARCをSendGridで自動管理、運用負荷削減
-- **ステートレス設計**: Fargateはメール保存せず即時Dell転送、障害時の影響範囲を最小化
-- **Elastic IP削除**: MXレコードはALB DNS名を指定、固定IP不要でコスト削減
-- **DNS要件変更**: `example.com. MX 10 alb-fargate-XXXXXX.ap-northeast-1.elb.amazonaws.com`
-- **ログ管理強化**: CloudWatch Logs（Fargate 30日保存）+ Dockerログドライバー（Dell）
-- **Secret管理更新**: AWS Secrets Manager（Fargate用Tailscale Auth Key, SendGrid API Key）
-- **リスク管理更新**: R-001（SendGridリレー障害）、R-009（送信量超過）、R-010（Secrets Manager障害）を追加
-- **コスト構造変化**: EC2固定費 → Fargate変動費 + SendGrid従量課金でコスト最適化
+- AWS EC2 → AWS Fargate移行: サーバーレス化によりホスト管理不要、使用量ベース課金でコスト最適化
+- SendGrid SMTP Relay追加: 外部送信専用にSendGridを採用、Dell側はPort 587/TLS経由で送信

@@ -73,6 +73,26 @@ else
   echo "WARNING: SASL credential file ${CUSTOM_DIR}/sasl_passwd not found. Outbound mail may fail." >&2
 fi
 
+# Ensure submissionポート向けのSASL/TLS設定を強制
+postconf -e 'smtpd_relay_restrictions=permit_mynetworks,permit_sasl_authenticated,defer_unauth_destination'
+postconf -e 'smtpd_sasl_type=dovecot'
+postconf -e 'smtpd_sasl_path=private/auth'
+postconf -e 'smtpd_sasl_auth_enable=yes'
+postconf -e 'smtpd_tls_security_level=encrypt'
+
+# Ensure log files exist and rsyslog is running so logs persist to mounted volume.
+mkdir -p /var/log
+touch /var/log/mail.log /var/log/mail.err /var/log/mail.warn
+chmod 644 /var/log/mail.log /var/log/mail.err /var/log/mail.warn
+cat <<'EOF' >/etc/rsyslog.d/50-postfix-file.conf
+mail.*                         /var/log/mail.log
+mail.err                       /var/log/mail.err
+mail.warning                   /var/log/mail.warn
+EOF
+/usr/sbin/rsyslogd || {
+  echo "WARNING: failed to start rsyslogd; Postfix logs may not be captured." >&2
+}
+
 # Ensure necessary directories exist with correct permissions.
 chown -R root:root /etc/postfix
 

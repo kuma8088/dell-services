@@ -8,6 +8,8 @@ networks:
         - subnet: 172.20.0.0/24
 
 volumes:
+  postfix_spool:
+    driver: local
   mail_data:
     driver: local
     driver_opts:
@@ -83,6 +85,7 @@ services:
     volumes:
       - ./config/postfix:/etc/postfix/custom
       - mail_data:/var/mail/vhosts
+      - postfix_spool:/var/spool/postfix
       - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
       - ./logs/postfix:/var/log
       - ./scripts:/opt/mailserver/scripts:ro
@@ -120,6 +123,7 @@ services:
       - ./config/dovecot:/etc/dovecot/custom
       - ./config/dovecot/users:/etc/dovecot/users:ro
       - mail_data:/var/mail/vhosts
+      - postfix_spool:/var/spool/postfix
       - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
       - ./logs/dovecot:/var/log
     deploy:
@@ -232,6 +236,43 @@ services:
       retries: 3
       start_period: 40s
 
+  # User Management Web App
+  usermgmt:
+    build:
+      context: ./usermgmt
+      dockerfile: Dockerfile
+    container_name: mailserver-usermgmt
+    hostname: usermgmt
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.90
+    environment:
+      - TZ=${TZ}
+      - DB_HOST=${USERMGMT_DB_HOST}
+      - DB_PORT=${USERMGMT_DB_PORT}
+      - DB_NAME=${USERMGMT_DB_NAME}
+      - DB_USER=${USERMGMT_DB_USER}
+      - DB_PASSWORD=${USERMGMT_DB_PASSWORD}
+      - SECRET_KEY=${USERMGMT_SECRET_KEY}
+      - FLASK_ENV=production
+    volumes:
+      - ./usermgmt:/app
+      - ./logs/usermgmt:/var/log/usermgmt
+    depends_on:
+      - mariadb
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # Nginx Reverse Proxy
   nginx:
     image: nginx:1.26-alpine
@@ -257,6 +298,7 @@ services:
       - ./logs/nginx:/var/log/nginx
     depends_on:
       - roundcube
+      - usermgmt
     healthcheck:
       test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/" ]
       interval: 30s

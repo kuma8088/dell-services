@@ -83,3 +83,6 @@ services/mailserver/backups/
 services/mailserver/config/postfix/sasl_passwd
 services/mailserver/config/postfix/sasl_passwd.db
 services/mailserver/config/dovecot/users
+
+# Dovecot SQL configuration with credentials
+services/mailserver/config/dovecot/dovecot-sql.conf.ext

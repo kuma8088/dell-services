@@ -1,0 +1,20 @@
+# Database connection settings
+driver = mysql
+connect = host=172.20.0.60 dbname=mailserver_usermgmt user=usermgmt password=<YOUR_DB_PASSWORD>
+
+# Default password scheme (matching file-based auth)
+default_pass_scheme = SHA512-CRYPT
+
+# Password query for passdb
+# Returns password hash for authentication
+password_query = \
+  SELECT email as user, password_hash as password \
+  FROM users \
+  WHERE email = '%u' AND enabled = 1
+
+# User query for userdb
+# Returns uid, gid, and home directory (override incorrect SQL data with correct vmail uid/gid)
+user_query = \
+  SELECT 1000 as uid, 1000 as gid, maildir as home \
+  FROM users \
+  WHERE email = '%u' AND enabled = 1

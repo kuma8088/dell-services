@@ -66,7 +66,18 @@
       "SlashCommand(/sc:document:*)",
       "Bash(sudo docker logs:*)",
       "Bash(git rm:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(sudo tailscale status:*)",
+      "Bash(sudo docker exec:*)",
+      "Bash(openssl x509:*)",
+      "SlashCommand(/sc:design:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(python3:*)",
+      "Bash(awk:*)",
+      "Bash(ip addr:*)",
+      "Bash(aws ec2 describe-instances:*)",
+      "Bash(.gitignore)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

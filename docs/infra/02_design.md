@@ -1,10 +1,10 @@
 # メールサーバー構築プロジェクト - 設計書
 
-**文書バージョン**: 5.1
-**作成日**: 2025-10-31（初版）/ 2025-11-01（v5.0改訂）/ 2025-11-02（v5.1改訂）
-**対象環境**: AWS Fargate（MXゲートウェイ） + Dell RockyLinux 9.6（メール本体） + SendGrid SMTP Relay + Tailscale VPN
-**設計方式**: ハイブリッドクラウド構成（AWS Fargate + オンプレミスDell + SaaSリレー）
-**参照文書**: 01_requirements.md v5.0
+**文書バージョン**: 6.0
+**作成日**: 2025-10-31（初版）/ 2025-11-01（v5.0改訂）/ 2025-11-02（v5.1改訂）/ 2025-11-04（v6.0改訂）
+**対象環境**: AWS EC2（MXゲートウェイ） + Dell RockyLinux 9.6（メール本体） + SendGrid SMTP Relay + Tailscale VPN
+**設計方式**: ハイブリッドクラウド構成（AWS EC2 + オンプレミスDell + SaaSリレー）
+**参照文書**: 01_requirements.md v6.0
 **リージョン**: ap-northeast-1 (東京)
 
 ---
@@ -610,9 +610,17 @@ Auto Scaling:
 | `protocols` | imap pop3 lmtp | 有効プロトコル（LMTP追加） |
 | `mail_location` | maildir:/var/mail/vhosts/%d/%n | Maildir形式 |
 | `ssl` | required | SSL必須 |
-| `ssl_cert` | </var/lib/tailscale/certs/mailserver.tail<xxxxx>.ts.net.crt | SSL証明書 |
-| `ssl_key` | </var/lib/tailscale/certs/mailserver.tail<xxxxx>.ts.net.key | SSL秘密鍵 |
+| `ssl_cert` | </var/lib/tailscale/certs/tls.crt | SSL証明書（Tailscale） |
+| `ssl_key` | </var/lib/tailscale/certs/tls.key | SSL秘密鍵（Tailscale） |
 | `ssl_min_protocol` | TLSv1.2 | 最低TLSバージョン |
+| `ssl_cipher_list` | ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384 | 最新メールクライアント対応（8種類） |
+| `ssl_prefer_server_ciphers` | yes | サーバー側cipher優先 |
+| `log_path` | /var/log/dovecot.log | エラーログパス |
+| `info_log_path` | /var/log/dovecot-info.log | 情報ログパス |
+| `debug_log_path` | /var/log/dovecot-debug.log | デバッグログパス |
+| `auth_verbose` | yes | 認証詳細ログ有効 |
+| `auth_debug` | yes | 認証デバッグログ有効 |
+| `verbose_ssl` | yes | SSL/TLS詳細ログ有効 |
 | `auth_mechanisms` | plain login | 認証メカニズム |
 | `passdb` | passwd-file /etc/dovecot/users | パスワードDB |
 | `userdb` | static uid=vmail gid=vmail home=/var/mail/vhosts/%d/%n | ユーザーDB |
@@ -646,9 +654,18 @@ service pop3-login {
     ssl = yes
   }
 }
+
+service auth {
+  unix_listener /var/spool/postfix/private/auth {
+    mode = 0666
+  }
+}
 ```
 
-**重要**: Port 2525はFargateからのLMTP転送受信専用（Tailscale VPN経由）
+**重要**:
+- Port 2525はEC2からのLMTP転送受信専用（Tailscale VPN経由）
+- `service auth`はPostfix submission port (587) でのSASL認証に使用
+- `/var/spool/postfix/private/auth`ソケットは`postfix_spool`ボリュームで共有
 
 ### 4.2 Postfix (送信専用) 設計
 
@@ -1438,6 +1455,15 @@ openssl s_client -connect smtp.sendgrid.net:587 -starttls smtp
 | 3.1 | 2025-11-01 | 外部SMTPリレー前提へドキュメント整合 | Codex |
 | 5.0 | 2025-11-01 | サーバーレス化改訂（AWS Fargate + Dell + SendGrid + Tailscale VPN） | Claude (devops-architect) |
 | 5.1 | 2025-11-02 | **ALB削除・Public IP直接受信化・東京リージョン化** | Claude (devops-architect) |
+| 6.0 | 2025-11-04 | **EC2回帰 + TLS Cipher/Logging設計更新 + SASL統合** | Claude |
+
+**v6.0 主要変更点（v5.1からの改訂）:**
+- **Fargate → EC2移行**: Tailscale VPN互換性によりEC2構成へ回帰
+- **Dovecot TLS Cipher設計拡張**: 8種類の暗号化スイート設計（ECDHE-ECDSA/RSA, ChaCha20, DHE-RSA）
+- **ファイルベースログ設計**: log_path, info_log_path, debug_log_path設定
+- **認証ログ強化**: auth_verbose, auth_debug, verbose_ssl有効化
+- **Postfix-Dovecot SASL統合**: service auth設計、postfix_spoolボリューム共有
+- **メールクライアント互換性設計**: TLS 1.2/1.3対応、最新クライアント要件明確化
 
 **v5.1 主要変更点（v5.0からの改訂）:**
 - **ALB削除**: Application Load Balancer削除、コスト削減（~$16.20/月削減）

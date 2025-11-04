@@ -14,6 +14,8 @@
 **参照**:
 - Fargate環境のトラブルシューティング履歴: `services/mailserver/troubleshoot/INBOUND_MAIL_FAILURE_2025-11-03.md`
 - EC2プロトコル設定問題の解決記録: `services/mailserver/troubleshoot/EC2_MAIL_PROTOCOL_ISSUE_2025-11-04.md`
+- **メールクライアントログイン失敗 (TLS Cipher互換性)**: `services/mailserver/troubleshoot/MAIL_CLIENT_LOGIN_FAILURE_2025-11-04.md`
+- **クライアント側設定ガイド (ユーザーガイド)**: `Docs/application/mailserver/device/01_device_access_design.md`
 
 ---
 
