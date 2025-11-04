@@ -1,2670 +1,2568 @@
-# メールサーバー構築プロジェクト - 構築手順書
+# Mailserver 構築・運用ガイド (EC2版)
 
-**文書バージョン**: 5.2
-**作成日**: 2025-10-31（初版）/ 2025-11-01（v2.0改訂）/ 2025-11-01（v3.0改訂）/ 2025-11-02（v3.1改訂）/ 2025-11-02（v5.0改訂）/ 2025-11-02（v5.1改訂）/ 2025-11-02（v5.2改訂）
-**対象環境**: AWS Fargate (Public IP MX Gateway) + Dell RockyLinux 9.6 + Docker Compose + SendGrid SMTP Relay + Tailscale VPN
-**対象者**: AWS/Linux中級管理者
-**参照文書**: 01_requirements.md v5.0、02_design.md v5.0、03_Firewall(RX-600KI).md v2.1
+**バージョン**: v6.0 (EC2 + Tailscale)
+**作成日**: 2025-11-04
+**更新日**: 2025-11-04
+**ステータス**: 運用中 (Production)
 
----
+## 目的
 
-## 📋 目次
+本ガイドは、Hybrid Cloud Mail Server (AWS EC2 + Dell On-Premises + SendGrid) の構築・運用手順を提供します。
 
-1. [事前準備](#1-事前準備)
-2. [環境構築](#2-環境構築)
-3. [AWS環境構築](#3-aws環境構築)
-4. [SendGrid設定](#4-sendgrid設定)
-5. [Tailscale VPN設定](#5-tailscale-vpn設定)
-6. [Dell環境構築](#6-dell環境構築)
-7. [統合テスト](#7-統合テスト)
-8. [自動化設定](#8-自動化設定)
-9. [トラブルシューティング](#9-トラブルシューティング)
+**アーキテクチャ背景**: Fargate版 (v5.1) はTailscale VPNネットワーク分離問題により廃止し、EC2版 (v6.0) に移行しました。
+
+**参照**:
+- Fargate環境のトラブルシューティング履歴: `services/mailserver/troubleshoot/INBOUND_MAIL_FAILURE_2025-11-03.md`
+- EC2プロトコル設定問題の解決記録: `services/mailserver/troubleshoot/EC2_MAIL_PROTOCOL_ISSUE_2025-11-04.md`
 
 ---
 
-## 1. 事前準備
+## 1. アーキテクチャ概要
 
-### 1.1 必要情報の確認
-
-以下の情報を事前に準備してください：
-
-| 項目 | 実際の値 | 備考 |
-|------|----------|------|
-| **AWSアカウント** | - | Fargate/VPC/Secrets Manager利用 |
-| **AWSリージョン** | ap-northeast-1 | 推奨リージョン |
-| **SendGridアカウント** | https://sendgrid.com/ | SMTP Relay用 |
-| **Tailscaleアカウント** | https://login.tailscale.com/ | VPN接続用 |
-| **プライマリドメイン** | kuma8088.com | メインドメイン |
-| **追加ドメイン** | fx-trader-life.com, webmakeprofit.org, webmakesprofit.com | 複数ドメイン対応 |
-| **メールサーバー内部IP** | 192.168.1.39 | Dell側DHCP固定割り当て |
-| **管理者メール** | naoya.iimura@gmail.com | アラート通知先 |
-
-### 1.2 アーキテクチャ概要
+### 1.1 システム構成図
 
 ```
-インターネット
-  ↓ Port 25
-AWS Fargate (Public IP + Postfix MX Gateway)
-  ↓ Tailscale VPN (LMTP Port 2525)
-Dell RockyLinux (Dovecot Mail Host)
-  ↓ Port 587
-SendGrid SMTP Relay
-  ↓ Port 25
-外部メールサーバー
+┌─────────────────────────────────────────────────────────────┐
+│ Internet                                                     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ Port 25 (SMTP)
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│ AWS EC2 Instance (MX Gateway)                                │
+│ - Instance Type: t4g.nano (ARM64, 2 vCPU, 0.5 GiB)          │
+│ - OS: Amazon Linux 2023                                      │
+│ - Public IP: 43.207.242.167 (Elastic IP)                    │
+│ - Security Group: Port 25 (SMTP)                            │
+│                                                              │
+│ ┌──────────────────────────────────────────────────────┐   │
+│ │ Tailscale Daemon (Host Level)                        │   │
+│ │ - VPN IP: 100.xxx.xxx.xxx                            │   │
+│ │ - Interface: tailscale0                              │   │
+│ │ - Accept Routes: enabled                             │   │
+│ └──────────────────────────────────────────────────────┘   │
+│                      ↓                                       │
+│ ┌──────────────────────────────────────────────────────┐   │
+│ │ Docker Container: Postfix (boky/postfix)             │   │
+│ │ - Port: 25 (SMTP inbound)                            │   │
+│ │ - Network: host mode                                 │   │
+│ │ - RELAYHOST: [100.110.222.53]:2525                   │   │
+│ │ - relay_domains: kuma8088.com                        │   │
+│ └──────────────────────────────────────────────────────┘   │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ Tailscale VPN
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Dell WorkStation (On-Premises)                               │
+│ - Tailscale IP: 100.110.222.53                              │
+│ - Private Network: 10.0.x.0/24                              │
+│                                                              │
+│ ┌──────────────────────────────────────────────────────┐   │
+│ │ Docker Compose Stack                                 │   │
+│ │ - Dovecot LMTP: 2525 (inbound from Fargate/EC2)     │   │
+│ │ - Postfix Submission: 587 (outbound via SendGrid)   │   │
+│ │ - Roundcube Webmail: 80/443                          │   │
+│ │ - Rspamd, ClamAV, MariaDB, Nginx                     │   │
+│ └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**データフロー**:
-- **受信**: インターネット → Fargate Postfix (Public IP) → Tailscale → Dell Dovecot (LMTP) → Rspamd/ClamAV → Maildir
-- **送信**: Client → Dell Postfix → SendGrid → インターネット
-- **Webmail**: Client → Tailscale → Dell Nginx → Roundcube
+### 1.2 Fargate vs EC2 比較
 
-**🔄 将来の拡張オプション**:
-- Application Load Balancer (ALB) を追加することで、マルチAZ冗長化と自動スケーリングが可能
-- 現在はシンプルなPublic IP Fargate構成で運用
-
-### 1.3 前提条件確認
-
-#### AWS CLI設定
-
-```bash
-# AWS CLIバージョン確認
-aws --version
-# 出力例: aws-cli/2.x.x Python/3.x.x Linux/x86_64
-
-# AWS認証情報設定
-aws configure
-# AWS Access Key ID: <YOUR_ACCESS_KEY>
-# AWS Secret Access Key: <YOUR_SECRET_KEY>
-# Default region name: ap-northeast-1
-# Default output format: json
-
-# 認証確認
-aws sts get-caller-identity
-```
-
-#### Dell RockyLinux環境確認
-
-```bash
-# OSバージョン確認
-cat /etc/redhat-release
-# 出力例: Rocky Linux release 9.6 (Blue Onyx)
-
-# 現在のユーザー確認
-whoami
-# root または sudo権限を持つユーザーであること
-
-# ディスク容量確認（最低20GB必要）
-df -h /
-```
-
-### 1.4 システム最新化
-
-```bash
-# システムパッケージ更新（Dell）
-sudo dnf update -y
-
-# システム再起動（カーネル更新があった場合）
-sudo reboot
-```
+| 項目 | Fargate (v5.1) | EC2 (v6.0) |
+|------|----------------|------------|
+| **Tailscale動作** | コンテナ内のみ (分離) | ホストOS全体 |
+| **VPNアクセス** | ❌ Postfixから不可 | ✅ 全プロセスから可能 |
+| **ネットワーク複雑度** | 高 (workaround必要) | 低 (標準構成) |
+| **コスト (月額)** | ~$13-16 | ~$3 |
+| **保守性** | 低 (制約多数) | 高 (標準Linux) |
+| **Subnet Router** | ❌ 利用不可 | ✅ 完全サポート |
 
 ---
 
-## 2. 環境構築
+## 2. Fargateでの問題点と教訓
 
-### 2.1 必要パッケージインストール（Dell）
+### 2.1 発生した問題 (Revision 1-11)
 
-```bash
-# 開発ツールとユーティリティのインストール
-sudo dnf install -y \
-  git \
-  vim \
-  wget \
-  curl \
-  tar \
-  gzip \
-  net-tools \
-  bind-utils \
-  jq \
-  firewalld
-```
+#### 問題 #1: Elastic IP / DNS ミスマッチ
+- **事象**: MXレコード `43.207.242.167` に届かない
+- **原因**: Fargate ENIは動的IP割り当て、Elastic IP直接関連付け不可
+- **影響**: メール受信失敗
 
-### 2.2 Dockerインストール（Dell）
+#### 問題 #2: Postfix アクセス制御設定ミス
+- **事象**: `Client host rejected: Access denied`
+- **原因**: `ALLOWED_SENDER_DOMAINS` で送信者ドメイン制限
+- **修正**: `ALLOW_EMPTY_SENDER_DOMAINS=true` で任意の送信者を許可
 
-```bash
-# Docker公式リポジトリ追加
-sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+#### 問題 #3: boky/postfix 環境変数名エラー
+- **事象**: リレー設定が認識されない
+- **原因**: `RELAY_HOST` (誤) → `RELAYHOST` (正)
+- **修正**: 正しい環境変数名を使用
 
-# Dockerインストール
-sudo dnf install -y docker-ce docker-ce-cli containerd.io
+#### 問題 #4: Tailscale ネットワーク分離 (根本問題)
+- **事象**: `Connection timed out` to Dell LMTP
+- **原因**: Fargate awsvpc モードでコンテナ間のネットワーク名前空間が分離
+- **影響**: Postfix → Tailscale VPN → Dell への通信不可能
+- **結論**: アーキテクチャ上の根本的制約、回避不可能
 
-# Docker起動と自動起動設定
-sudo systemctl start docker
-sudo systemctl enable docker
+### 2.2 学んだ教訓
 
-# Dockerバージョン確認
-sudo docker --version
-# 出力例: Docker version 24.0.x, build xxxxx
+#### 教訓 #1: インフラ設計時の技術的制約調査の重要性
+- コンテナプラットフォームの制約を事前に理解すべき
+- 概念実証 (PoC) でアーキテクチャを検証すべきだった
 
-# 現在のユーザーをdockerグループに追加（sudo不要にする）
-sudo usermod -aG docker $USER
+#### 教訓 #2: Docker イメージの仕様確認
+- 環境変数名は Docker イメージ固有
+- 公式ドキュメントを必ず参照
+- boky/postfix は「送信専用リレー」として設計
 
-# グループ設定を反映（一度ログアウト・ログインするか以下実行）
-newgrp docker
+#### 教訓 #3: 段階的エラー解決の落とし穴
+- 各修正で一つの問題を解決しても、次の問題が表面化
+- Revision 6-11 で合計 6 回の試行錯誤
+- 最終的にアーキテクチャ上の根本的な問題に到達
 
-# Docker動作確認
-docker run hello-world
-```
-
-### 2.3 Docker Composeインストール（Dell）
-
-```bash
-# Docker Compose v2 インストール（Dockerプラグイン版）
-sudo dnf install -y docker-compose-plugin
-
-# バージョン確認
-docker compose version
-# 出力例: Docker Compose version v2.x.x
-```
-
-### 2.4 ファイアウォール設定（Dell）
-
-```bash
-# firewalld起動と自動起動設定
-sudo systemctl start firewalld
-sudo systemctl enable firewalld
-
-# Tailscale VPN経由でアクセスされるポートを開放
-sudo firewall-cmd --permanent --add-port=993/tcp   # IMAPS
-sudo firewall-cmd --permanent --add-port=995/tcp   # POP3S
-sudo firewall-cmd --permanent --add-port=443/tcp   # HTTPS
-sudo firewall-cmd --permanent --add-port=2525/tcp  # LMTP (Fargate → Dell)
-
-# 設定リロード
-sudo firewall-cmd --reload
-
-# 開放ポート確認
-sudo firewall-cmd --list-all
-```
-
-### 2.5 SELinux設定（Dell）
-
-```bash
-# 現在のSELinux状態確認
-getenforce
-
-# SELinuxをPermissiveモードに変更（初期構築時）
-# ※本番運用時はEnforcingモードに戻すことを推奨
-sudo setenforce 0
-
-# 永続的にPermissiveモードにする場合
-sudo sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config
-
-# ※セキュリティを重視する場合は、SELinuxポリシーを適切に設定してEnforcingモードで運用
-```
+#### 教訓 #4: Elastic IP の制約理解
+- Fargate ENI は AWS マネージド、Elastic IP 直接関連付け不可
+- NLB / EC2 Proxy / Dynamic DNS などの代替策が必要
 
 ---
 
-## 3. AWS環境構築
+## 3. EC2での解決策と要件
 
-### 3.1 Terraform による AWS インフラストラクチャプロビジョニング
+### 3.1 EC2アーキテクチャの利点
 
-#### 概要
+#### 利点 #1: Tailscale完全サポート
+- **ホストレベルで動作**: カーネルネットワークスタックに統合
+- **全プロセスからアクセス**: Dockerコンテナもネイティブプロセスも同じVPNインターフェース共有
+- **標準機能フル活用**: Subnet Router、MagicDNS、Exit Nodeなど全機能利用可能
 
-このセクションでは、Terraform を使用して以下の AWS リソースを一括プロビジョニングします：
+#### 利点 #2: Elastic IP 直接割り当て
+- **固定IP**: タスク再起動時も変更なし
+- **DNS安定性**: MXレコードとIPの整合性常に維持
+- **シンプルな設定**: API操作不要
 
-- VPC、サブネット、ルートテーブル、インターネットゲートウェイ
-- セキュリティグループ（Fargate MX Gateway 用）
-- Elastic IP（オプション）
-- ECS Cluster（Fargate 専用）
-- CloudWatch Logs グループ
-- IAM Role（ECS Task Execution Role、Task Role）
+#### 利点 #3: コスト削減
+- **t4g.nano**: ~$3.07/月 (Fargate: ~$13-16/月)
+- **コスト削減率**: 76-81%
 
-**Terraform 管理対象外（手動設定が必要）**:
-- AWS Secrets Manager（Section 3.2）- セキュリティベストプラクティス
-- ECS Task Definition（Section 6）- デプロイメント固有
-- ECS Service（Section 6）- デプロイメント固有
+#### 利点 #4: 設計のシンプル化
+- **標準Linux構成**: Amazon Linux 2023 + Docker + Tailscale
+- **保守性向上**: 複雑なworkaround不要
+- **柔軟性**: 必要に応じて機能追加可能
 
-#### 前提条件
+### 3.2 機能要件
 
-```bash
-# Terraform インストール確認
-terraform --version
-# 出力例: Terraform v1.x.x
+#### FR-1: SMTP受信機能
+- **受信ポート**: TCP/25 (SMTP)
+- **対象ドメイン**: `kuma8088.com`, `m8088.com`
+- **送信者制限**: なし (任意の送信者から受信可能)
+- **受信者制限**: あり (対象ドメイン宛のみ)
 
-# Terraform がインストールされていない場合
-# Rocky Linux 9.6:
-sudo dnf install -y dnf-plugins-core
-sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
-sudo dnf install terraform
+#### FR-2: メールリレー機能
+- **リレー先**: Dell WorkStation Dovecot LMTP (Tailscale経由)
+- **リレーアドレス**: `100.110.222.53:2525`
+- **プロトコル**: LMTP over Tailscale VPN
+- **タイムアウト**: 30秒以内
 
-# AWS CLI 認証確認（事前準備セクションで設定済み）
-aws sts get-caller-identity
+#### FR-3: Tailscale VPN接続
+- **動作モード**: ホストレベル (全プロセスから利用可能)
+- **VPNインターフェース**: `tailscale0`
+- **ルート受信**: 有効 (`--accept-routes`)
+- **自動再接続**: 有効
+
+#### FR-4: DNS解決
+- **対象**: Tailscale hostname (`dell-workstation.tail67811d.ts.net`)
+- **MagicDNS**: 有効 (Tailscale内部DNS)
+- **IPv4/IPv6**: IPv4のみ (`inet_protocols=ipv4`)
+
+### 3.3 非機能要件
+
+#### NFR-1: 可用性
+- **稼働率**: 99.5% (月間ダウンタイム <3.6時間)
+- **自動起動**: システム起動時に自動起動 (systemd)
+- **ヘルスチェック**: Docker healthcheck + 外部監視
+
+#### NFR-2: セキュリティ
+- **SSH**: ポート22無効化、鍵認証のみ
+- **Firewall**: Security Group (Port 25のみ許可)
+- **SELinux**: 有効 (Amazon Linux 2023デフォルト)
+- **自動更新**: セキュリティパッチ自動適用
+
+#### NFR-3: パフォーマンス
+- **SMTP応答時間**: <1秒
+- **メールリレー時間**: <5秒
+- **CPU使用率**: <50% (平常時)
+- **メモリ使用率**: <70% (平常時)
+
+#### NFR-4: 監視・ログ
+- **ログ収集**: CloudWatch Logs
+- **メトリクス**: CloudWatch Metrics (CPU, Memory, Network)
+- **アラート**: CloudWatch Alarm (CPU >80%, Memory >80%)
+- **ログ保持期間**: 30日間
+
+### 3.4 制約事項
+
+#### 制約 #1: Fargateトラブルシューティングの教訓適用
+- ✅ **Elastic IP 固定割り当て**: EC2インスタンス起動時に自動関連付け
+- ✅ **boky/postfix環境変数**: `RELAYHOST` (正) を使用、`RELAY_HOST` (誤) は使用しない
+- ✅ **アクセス制御**: `ALLOW_EMPTY_SENDER_DOMAINS=true` で任意の送信者許可
+- ✅ **Tailscaleホストレベル**: コンテナ内ではなくホストOSで実行
+- ✅ **IPv4専用**: `inet_protocols=ipv4` で IPv6 無効化
+- ✅ **relay_domains設定**: 受信対象ドメインを明示的に設定
+
+#### 制約 #2: Dell環境との互換性
+- Dell Docker Compose環境は現状維持
+- LMTP受信ポート: `2525` (変更なし)
+- Tailscale IP: `100.110.222.53` (変更なし)
+
+#### 制約 #3: DNSレコード
+- MXレコード: `mx.kuma8088.com` → `43.207.242.167` (既存Elastic IP)
+- 変更不要 (EC2にElastic IP関連付けのみ)
+
+---
+
+## 4. インフラ構築手順
+
+### 4.1 Terraform構成
+
+#### 4.1.1 EC2インスタンス定義
+
+**ファイル**: `services/mailserver/terraform/ec2.tf`
+
+```hcl
+# ============================================================================
+# EC2 MX Gateway Instance (v6.0)
+# ============================================================================
+
+resource "aws_instance" "mailserver_mx" {
+  ami                         = "ami-0ad4e047a362f26b8"  # Amazon Linux 2023 (ARM64)
+  instance_type               = "t4g.nano"
+  subnet_id                   = aws_subnet.public_subnet_1a.id
+  vpc_security_group_ids      = [aws_security_group.fargate_sg.id]
+  associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_mx_profile.name
+
+  user_data = file("${path.module}/user_data.sh")
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 8  # 8 GiB (最小推奨)
+    encrypted   = true
+  }
+
+  tags = {
+    Name        = "mailserver-mx-gateway"
+    Version     = "v6.0"
+    Environment = var.environment
+  }
+}
+
+# Elastic IP 関連付け
+resource "aws_eip_association" "mailserver_eip" {
+  instance_id   = aws_instance.mailserver_mx.id
+  allocation_id = "eipalloc-04e838a5b1c9c7dde"  # 既存Elastic IP
+}
+
+# IAM Instance Profile
+resource "aws_iam_instance_profile" "ec2_mx_profile" {
+  name = "mailserver-ec2-mx-profile"
+  role = aws_iam_role.ec2_mx_role.name
+}
+
+# IAM Role for EC2
+resource "aws_iam_role" "ec2_mx_role" {
+  name = "mailserver-ec2-mx-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "mailserver-ec2-mx-role"
+  }
+}
+
+# IAM Policy: Secrets Manager Access
+resource "aws_iam_role_policy" "ec2_mx_secrets_access" {
+  name = "mailserver-ec2-secrets-access"
+  role = aws_iam_role.ec2_mx_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = [
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:mailserver/tailscale/ec2-auth-key-*"
+        ]
+      }
+    ]
+  })
+}
+
+# IAM Policy: CloudWatch Logs
+resource "aws_iam_role_policy_attachment" "ec2_mx_cloudwatch_logs" {
+  role       = aws_iam_role.ec2_mx_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+# CloudWatch Log Group
+resource "aws_cloudwatch_log_group" "ec2_mx_logs" {
+  name              = "/ec2/mailserver-mx"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name = "mailserver-ec2-mx-logs"
+  }
+}
+
+# Outputs
+output "ec2_instance_id" {
+  description = "EC2 instance ID"
+  value       = aws_instance.mailserver_mx.id
+}
+
+output "ec2_public_ip" {
+  description = "EC2 public IP (Elastic IP)"
+  value       = aws_eip_association.mailserver_eip.public_ip
+}
+
+output "ec2_private_ip" {
+  description = "EC2 private IP"
+  value       = aws_instance.mailserver_mx.private_ip
+}
 ```
 
-#### Terraform ワークフロー
+#### 4.1.2 User Data Script
+
+**ファイル**: `services/mailserver/terraform/user_data.sh`
 
 ```bash
-# 1. プロジェクトディレクトリに移動
+#!/bin/bash
+set -e
+
+# ============================================================================
+# EC2 MX Gateway User Data Script (v6.0)
+# ============================================================================
+
+# ログ設定
+exec > >(tee /var/log/user-data.log)
+exec 2>&1
+
+echo "=== Starting EC2 MX Gateway Setup ==="
+echo "Timestamp: $(date)"
+
+# 1. システムアップデート
+echo "=== Step 1: System Update ==="
+dnf update -y
+
+# 2. 必要なパッケージインストール
+echo "=== Step 2: Install Required Packages ==="
+dnf install -y \
+  docker \
+  amazon-cloudwatch-agent \
+  awscli \
+  nc \
+  telnet
+
+# 3. Docker起動と自動起動設定
+echo "=== Step 3: Docker Setup ==="
+systemctl start docker
+systemctl enable docker
+usermod -aG docker ec2-user
+
+# 4. Docker Composeインストール
+echo "=== Step 4: Install Docker Compose ==="
+curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# 5. Tailscaleインストール
+echo "=== Step 5: Install Tailscale ==="
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# 6. Tailscale Auth Key取得とVPN接続
+echo "=== Step 6: Connect to Tailscale VPN ==="
+AUTHKEY=$(aws secretsmanager get-secret-value \
+  --secret-id mailserver/tailscale/ec2-auth-key \
+  --query SecretString \
+  --output text \
+  --region ap-northeast-1)
+
+if [ -z "$AUTHKEY" ]; then
+  echo "ERROR: Failed to retrieve Tailscale auth key from Secrets Manager"
+  exit 1
+fi
+
+tailscale up --authkey="$AUTHKEY" --accept-routes --hostname="mailserver-mx-ec2"
+
+# Tailscale接続確認
+sleep 5
+tailscale status
+
+# 7. Docker Compose設定配置
+echo "=== Step 7: Deploy Docker Compose Configuration ==="
+mkdir -p /opt/mailserver
+cat > /opt/mailserver/docker-compose.yml <<'EOF'
+version: '3.8'
+
+services:
+  postfix:
+    image: boky/postfix:latest
+    container_name: mailserver-postfix
+    restart: always
+    network_mode: host
+    environment:
+      # Fargateトラブルシューティング教訓 #2: 送信者ドメイン制限なし
+      - ALLOW_EMPTY_SENDER_DOMAINS=true
+      - ALLOWED_SENDER_DOMAINS=
+
+      # EC2トラブルシューティング教訓: LMTP配信設定（SMTP→LMTPプロトコル変換）
+      - POSTFIX_relay_transport=lmtp:[100.110.222.53]:2525
+
+      # Fargateトラブルシューティング教訓 #3: IPv4のみ
+      - POSTFIX_inet_protocols=ipv4
+
+      # Fargateトラブルシューティング教訓 #2: アクセス制御
+      - POSTFIX_smtpd_recipient_restrictions=permit_mynetworks, permit_sasl_authenticated, check_relay_domains, permit
+      - POSTFIX_smtpd_client_restrictions=permit_mynetworks, permit_sasl_authenticated, permit
+      - POSTFIX_smtpd_sender_restrictions=permit_mynetworks, permit_sasl_authenticated, permit
+
+      # EC2トラブルシューティング教訓: 有効なドメインのみ設定（m8088.com削除）
+      - POSTFIX_relay_domains=kuma8088.com
+
+      # その他の設定
+      - POSTFIX_message_size_limit=26214400
+      - HOSTNAME=mx.kuma8088.com
+      - DOMAIN=kuma8088.com
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "25"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ap-northeast-1
+        awslogs-group: /ec2/mailserver-mx
+        awslogs-stream: postfix
+EOF
+
+# 8. Postfix起動
+echo "=== Step 8: Start Postfix Container ==="
+cd /opt/mailserver
+docker-compose up -d
+
+# 起動確認
+sleep 10
+docker ps
+docker logs mailserver-postfix
+
+# 9. CloudWatch Agent設定
+echo "=== Step 9: Configure CloudWatch Agent ==="
+cat > /opt/aws/amazon-cloudwatch-agent/etc/config.json <<'EOF'
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/user-data.log",
+            "log_group_name": "/ec2/mailserver-mx",
+            "log_stream_name": "user-data"
+          }
+        ]
+      }
+    }
+  },
+  "metrics": {
+    "namespace": "Mailserver/EC2",
+    "metrics_collected": {
+      "cpu": {
+        "measurement": [
+          {
+            "name": "cpu_usage_idle",
+            "rename": "CPU_IDLE",
+            "unit": "Percent"
+          }
+        ],
+        "metrics_collection_interval": 60
+      },
+      "mem": {
+        "measurement": [
+          {
+            "name": "mem_used_percent",
+            "rename": "MEM_USED",
+            "unit": "Percent"
+          }
+        ],
+        "metrics_collection_interval": 60
+      }
+    }
+  }
+}
+EOF
+
+systemctl start amazon-cloudwatch-agent
+systemctl enable amazon-cloudwatch-agent
+
+# 10. 動作確認
+echo "=== Step 10: Health Check ==="
+
+# Tailscale VPN確認
+echo "Tailscale Status:"
+tailscale status
+
+# Dellへの接続確認
+echo "Dell LMTP Connectivity:"
+nc -zv 100.110.222.53 2525 || echo "WARNING: Dell LMTP not reachable"
+
+# SMTP Port確認
+echo "SMTP Port Check:"
+nc -zv localhost 25 || echo "WARNING: SMTP port not open"
+
+# Docker Container確認
+echo "Docker Container Status:"
+docker ps -a
+
+echo "=== EC2 MX Gateway Setup Complete ==="
+echo "Timestamp: $(date)"
+```
+
+### 4.2 Terraform適用手順
+
+```bash
+# 1. Terraform初期化
 cd /opt/onprem-infra-system/project-root-infra/services/mailserver/terraform
-
-# 2. Terraform 初期化（初回のみ）
-# ⚠️ 前提条件: AWS CLI認証が完了していること
-aws sts get-caller-identity || { echo "❌ AWS認証エラー"; exit 1; }
-
 terraform init
 
-# 3. 設定ファイル検証
-terraform validate
-# 出力: Success! The configuration is valid.
-
-# 4. インフラストラクチャ変更プレビュー
+# 2. 変更プレビュー
 terraform plan
 
-# 5. インフラストラクチャ適用
+# 期待される出力:
+# + aws_instance.mailserver_mx
+# + aws_eip_association.mailserver_eip
+# + aws_iam_instance_profile.ec2_mx_profile
+# + aws_iam_role.ec2_mx_role
+# + aws_iam_role_policy.ec2_mx_secrets_access
+# + aws_cloudwatch_log_group.ec2_mx_logs
+
+# 3. インフラ適用
 terraform apply
 
-# プロンプト表示:
-# Do you want to perform these actions?
-#   Terraform will perform the actions described above.
-#   Only 'yes' will be accepted to approve.
-#
-#   Enter a value: yes
+# 確認プロンプトで "yes" を入力
 
-# 適用完了後、以下の出力が表示されます:
-# Apply complete! Resources: 13 added, 0 changed, 0 destroyed.
-#
-# Outputs:
-#
-# cloudwatch_log_group_name = "/ecs/mailserver-mx"
-# ecs_cluster_arn = "arn:aws:ecs:ap-northeast-1:XXXXXXXXXXXX:cluster/mailserver-cluster"
-# ecs_cluster_name = "mailserver-cluster"
-# elastic_ip = "13.XXX.XXX.XXX"
-# elastic_ip_allocation_id = "eipalloc-XXXXXXXXXXXX"
-# execution_role_arn = "arn:aws:iam::XXXXXXXXXXXX:role/mailserver-execution-role"
-# internet_gateway_id = "igw-XXXXXXXXXXXX"
-# public_subnet_1a_id = "subnet-XXXXXXXXXXXX"
-# public_subnet_1c_id = "subnet-XXXXXXXXXXXX"
-# route_table_id = "rtb-XXXXXXXXXXXX"
-# security_group_id = "sg-XXXXXXXXXXXX"
-# task_role_arn = "arn:aws:iam::XXXXXXXXXXXX:role/mailserver-task-role"
-# vpc_cidr = "10.0.0.0/16"
-# vpc_id = "vpc-XXXXXXXXXXXX"
+# 4. 出力確認
+terraform output
 
-# 6. 出力値を環境変数にエクスポート（後続セクションで使用）
-export VPC_ID=$(terraform output -raw vpc_id)
-export SUBNET_1=$(terraform output -raw public_subnet_1a_id)
-export SUBNET_2=$(terraform output -raw public_subnet_1c_id)
-export FARGATE_SG_ID=$(terraform output -raw security_group_id)
-export ELASTIC_IP=$(terraform output -raw elastic_ip)
-export EIP_ALLOC_ID=$(terraform output -raw elastic_ip_allocation_id)
-export EXECUTION_ROLE_ARN=$(terraform output -raw execution_role_arn)
-export TASK_ROLE_ARN=$(terraform output -raw task_role_arn)
-
-# 環境変数検証スクリプト（必須）
-cat > ~/validate-terraform-exports.sh << 'EOF'
-#!/bin/bash
-set -e
-
-echo "=== Terraform Exports Validation ==="
-
-# VPC ID検証
-echo -n "VPC ID: $VPC_ID "
-[[ $VPC_ID =~ ^vpc-[0-9a-f]{17}$ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-# Subnet検証
-echo -n "Subnet 1a: $SUBNET_1 "
-[[ $SUBNET_1 =~ ^subnet-[0-9a-f]{17}$ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-echo -n "Subnet 1c: $SUBNET_2 "
-[[ $SUBNET_2 =~ ^subnet-[0-9a-f]{17}$ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-# Security Group検証
-echo -n "Security Group: $FARGATE_SG_ID "
-[[ $FARGATE_SG_ID =~ ^sg-[0-9a-f]{17}$ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-# Elastic IP検証
-echo -n "Elastic IP: $ELASTIC_IP "
-[[ $ELASTIC_IP =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-# EIP Allocation ID検証
-echo -n "EIP Allocation ID: $EIP_ALLOC_ID "
-[[ $EIP_ALLOC_ID =~ ^eipalloc-[0-9a-f]{17}$ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-# IAM Role ARN検証
-echo -n "Execution Role ARN: $EXECUTION_ROLE_ARN "
-[[ $EXECUTION_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-echo -n "Task Role ARN: $TASK_ROLE_ARN "
-[[ $TASK_ROLE_ARN =~ ^arn:aws:iam::[0-9]{12}:role/ ]] && echo "✅" || { echo "❌ Invalid format"; exit 1; }
-
-echo ""
-echo "=== Validation Summary ==="
-echo "✅ All environment variables are correctly formatted"
-echo ""
-echo "⚠️ 重要: 以下のIPアドレスを記録してください"
-echo "Elastic IP: $ELASTIC_IP"
-echo "用途: セクション7.3でMXレコードに設定します"
-echo ""
-EOF
-
-chmod +x /opt/onprem-infra-system/project-root-infra/services/mailserver/terraform/scripts/validate-terraform-exports.sh
-/opt/onprem-infra-system/project-root-infra/services/mailserver/terraform/scripts/validate-terraform-exports.sh
+# 期待される出力:
+# ec2_instance_id = "i-xxxxxxxxxxxxx"
+# ec2_public_ip = "43.207.242.167"
+# ec2_private_ip = "10.0.1.xxx"
 ```
 
-#### インフラストラクチャ検証
+### 4.3 デプロイ確認
 
 ```bash
-# Terraform 管理状態確認
-terraform show
-
-# 特定リソースの詳細確認
-terraform state show aws_vpc.mailserver_vpc
-terraform state show aws_security_group.fargate_sg
-terraform state show aws_eip.mailserver_eip
-
-# AWS コンソールでの検証
-# 1. VPC コンソール: VPC、サブネット、ルートテーブル確認
-# 2. EC2 コンソール: セキュリティグループ、Elastic IP 確認
-# 3. ECS コンソール: Cluster 確認
-# 4. IAM コンソール: Role 確認
-# 5. CloudWatch コンソール: Logs グループ確認
-```
-
-#### セキュリティグループ検証スクリプト
-
-Terraform で作成したセキュリティグループの設定を検証します：
-
-```bash
-# 検証スクリプト作成
-cat > ~/validate-sg-rules.sh << 'EOF'
-#!/bin/bash
-set -e
-
-FARGATE_SG_ID="$1"
-
-if [ -z "$FARGATE_SG_ID" ]; then
-  echo "Usage: $0 <FARGATE_SG_ID>"
-  exit 1
-fi
-
-echo "=== Fargate Security Group Validation ==="
-echo "Security Group ID: $FARGATE_SG_ID"
-echo ""
-
-# インバウンドルール検証
-echo "📥 Inbound Rules Validation:"
-INBOUND_RULES=$(aws ec2 describe-security-groups --group-ids $FARGATE_SG_ID --query 'SecurityGroups[0].IpPermissions')
-
-# Port 25 TCP 検証（0.0.0.0/0から許可必須）
-PORT25_RULE=$(echo $INBOUND_RULES | jq '.[] | select(.FromPort==25 and .ToPort==25 and .IpProtocol=="tcp")')
-if [ -n "$PORT25_RULE" ]; then
-  echo "✅ Port 25 TCP (SMTP) - ALLOWED from 0.0.0.0/0"
-else
-  echo "❌ Port 25 TCP (SMTP) - MISSING (Critical for MX gateway)"
-  exit 1
-fi
-
-# Port 41641 UDP 検証（Tailscale DERP）
-PORT41641_RULE=$(echo $INBOUND_RULES | jq '.[] | select(.FromPort==41641 and .ToPort==41641 and .IpProtocol=="udp")')
-if [ -n "$PORT41641_RULE" ]; then
-  echo "✅ Port 41641 UDP (Tailscale) - ALLOWED from 0.0.0.0/0"
-else
-  echo "❌ Port 41641 UDP (Tailscale) - MISSING (Critical for VPN connectivity)"
-  exit 1
-fi
-
-# アウトバウンドルール検証
-echo ""
-echo "📤 Outbound Rules Validation:"
-OUTBOUND_RULES=$(aws ec2 describe-security-groups --group-ids $FARGATE_SG_ID --query 'SecurityGroups[0].IpPermissionsEgress')
-
-# 全トラフィック許可検証
-EGRESS_ALL=$(echo $OUTBOUND_RULES | jq '.[] | select(.IpProtocol=="-1" and (.IpRanges[].CidrIp=="0.0.0.0/0"))')
-if [ -n "$EGRESS_ALL" ]; then
-  echo "✅ All outbound traffic - ALLOWED to 0.0.0.0/0"
-else
-  echo "⚠️ All outbound traffic - RESTRICTED (may cause connectivity issues)"
-fi
-
-echo ""
-echo "=== Validation Summary ==="
-echo "✅ Security Group $FARGATE_SG_ID is correctly configured"
-EOF
-
-chmod +x ~/validate-sg-rules.sh
-
-# 検証実行
-~/validate-sg-rules.sh $FARGATE_SG_ID
-```
-
-**期待される出力**:
-```
-=== Fargate Security Group Validation ===
-Security Group ID: sg-0123456789abcdef0
-
-📥 Inbound Rules Validation:
-✅ Port 25 TCP (SMTP) - ALLOWED from 0.0.0.0/0
-✅ Port 41641 UDP (Tailscale) - ALLOWED from 0.0.0.0/0
-
-📤 Outbound Rules Validation:
-✅ All outbound traffic - ALLOWED to 0.0.0.0/0
-
-=== Validation Summary ===
-✅ Security Group sg-0123456789abcdef0 is correctly configured
-```
-
-#### IP アドレス戦略について
-
-**Elastic IP（推奨）**:
-- Terraform で Elastic IP が自動作成されます
-- 固定 IP アドレスにより DNS 運用が簡素化
-- 月額コスト: $3.60/月
-- MX レコードに設定する IP アドレスは `terraform output elastic_ip` で取得
-
-**Dynamic IP（コスト最適化）**:
-- Elastic IP リソースを Terraform 設定から削除することで Dynamic IP に変更可能
-- タスク再起動時の DNS 自動更新スクリプトが必要（セクション 8 参照）
-- 月額コスト: 無料
-
-#### Terraform Apply失敗時の復旧手順
-
-**シナリオ1: 正常なインフラ適用**
-
-```bash
-# Given: AWS認証が有効 AND terraform init 完了
-# When: terraform apply 実行 AND プロンプトで "yes" 入力
-# Then:
-#   - "Apply complete! Resources: 13 added" が表示される
-#   - 全出力値が有効な形式で表示される
-#   - terraform.tfstate ファイルが作成される
-
-# 成功検証基準:
-# 1. elastic_ip が有効なIPv4アドレス形式 (例: 13.XXX.XXX.XXX)
-# 2. vpc_id が vpc-XXXXXXXXXXXX 形式
-# 3. security_group_id が sg-XXXXXXXXXXXX 形式
-# 4. 全出力値が "null" でないこと
-```
-
-**シナリオ2: インフラ一部作成済み（例: VPCは成功、Subnetで失敗）**
-
-```bash
-# 1. 現在のState確認
-terraform state list
-# 出力例:
-# aws_vpc.mailserver_vpc
-# （Subnet等は未作成でリストに表示されない）
-
-# 2. エラー原因解決
-# - AWS上限緩和が必要な場合: AWSサポートに依頼
-# - 設定ミスの場合: terraform/main.tf を修正
-
-# 3. 再適用（Terraformが差分を自動検出して続行）
-terraform plan  # 差分確認
-terraform apply
-```
-
-**シナリオ3: State破損が疑われる場合**
-
-```bash
-# 1. Stateバックアップ（破損対策）
-cp terraform.tfstate terraform.tfstate.backup.$(date +%Y%m%d_%H%M%S)
-
-# 2. AWSリソース現状確認
-aws ec2 describe-vpcs --filters "Name=tag:Name,Values=mailserver-vpc" --query 'Vpcs[0].VpcId' --output text
-# 出力例: vpc-0123456789abcdef0
-
-# 3. State修復（Stateに記録されていないが実際に存在するリソースをインポート）
-terraform import aws_vpc.mailserver_vpc <VPC_ID>
-
-# 4. State整合性確認
-terraform plan
-# 期待値: "No changes. Your infrastructure matches the configuration."
-```
-
-**シナリオ4: 完全ロールバックが必要な場合**
-
-```bash
-# 1. 作成済みリソース一覧取得
-terraform state list
-
-# 2. 削除実行（警告をよく読んでから承認）
-terraform destroy
-
-# 3. 問題解決後、再構築
-terraform plan  # 構築内容の再確認
-terraform apply
-```
-
-#### Terraform リソース削除（注意）
-
-```bash
-# ⚠️ 警告: 以下のコマンドはすべての AWS リソースを削除します
-# 本番環境では実行しないでください
-
-# リソース削除前チェックリスト（必須）
-# 1. ECS Serviceが削除されていることを確認
-aws ecs list-services --cluster mailserver-cluster --query 'serviceArns' --output text
-# 期待値: 空出力（サービスが存在しない）
-
-# 2. 実行中のECS Taskが存在しないことを確認
-aws ecs list-tasks --cluster mailserver-cluster --query 'taskArns' --output text
-# 期待値: 空出力（タスクが存在しない）
-
-# 3. バックアップ確認
-terraform show > /tmp/terraform_backup_$(date +%Y%m%d_%H%M%S).txt
-
-# 上記すべて確認後、削除実行
-# リソース削除プレビュー
-terraform plan -destroy
-
-# リソース削除実行
-terraform destroy
-
-# プロンプト表示:
-# Do you really want to destroy all resources?
-#   Terraform will destroy all your managed infrastructure, as shown above.
-#   There is no undo. Only 'yes' will be accepted to confirm.
-#
-#   Enter a value: yes
-```
-
-#### トラブルシューティング
-
-**エラー: "Error creating VPC: VpcLimitExceeded"**
-- 原因: AWS アカウントの VPC 上限に達している
-- 対処: 未使用の VPC を削除するか、AWS サポートに上限緩和を依頼
-
-**エラー: "Error creating Elastic IP: AddressLimitExceeded"**
-- 原因: Elastic IP の上限（デフォルト 5 個）に達している
-- 対処: 未使用の EIP を解放するか、AWS サポートに上限緩和を依頼
-
-**エラー: "Error creating IAM Role: EntityAlreadyExists"**
-- 原因: 同名の IAM Role が既に存在
-- 対処: 既存の Role を削除するか、`terraform/main.tf` で Role 名を変更
-
-**Elastic IP関連付けエラー: "Resource already associated"**:
-- 原因: 既存のElastic IPが別のENIに関連付けられている
-- 対処:
-```bash
-# 既存関連付け確認
-aws ec2 describe-addresses --allocation-ids $EIP_ALLOC_ID
-
-# 既存関連付け解除（必要に応じて）
-aws ec2 disassociate-address --association-id <ASSOCIATION_ID>
-
-# 再関連付け
-aws ec2 associate-address \
-  --allocation-id $EIP_ALLOC_ID \
-  --network-interface-id $ENI_ID
-```
-
-**Terraform State ロック**:
-- S3 バックエンドと DynamoDB テーブルを使用した State ロック機能は未実装
-- 複数人での同時作業は避けてください
-- 将来の拡張: S3 + DynamoDB によるリモート State 管理を推奨
-
-### 3.6 AWS Secrets Manager設定
-
-#### Tailscale Auth Key保存
-
-```bash
-# ⚠️ Tailscaleコンソールで Auth Key を生成してください
-# https://login.tailscale.com/admin/settings/keys
-# - Reusable: Yes
-# - Ephemeral: Yes
-# - Tags: fargate-mx
-# - Expiration: Never
-
-# ⚠️ セキュリティ注意: Auth Key を一時ファイルから読み込む
-# (シェル履歴に残さないため)
-echo "Tailscale Auth Key を含むファイルを用意してください"
-echo "例: /tmp/ts_auth.key (パーミッション 600)"
-read -p "Auth Key ファイルパス: " TS_KEY_FILE
-
-# ファイルから読み込み
-TS_AUTHKEY=$(cat "$TS_KEY_FILE")
-
-# 即座にファイルを削除
-rm -f "$TS_KEY_FILE"
-
-# シェル履歴からも削除
-history -d $((HISTCMD-3))
-history -d $((HISTCMD-2))
-history -d $((HISTCMD-1))
-
-# Secrets Managerにシークレット作成
-aws secretsmanager create-secret \
-  --name mailserver/tailscale/fargate-auth-key \
-  --description "Tailscale Auth Key for Fargate MX Gateway" \
-  --secret-string "$TS_AUTHKEY"
-
-# シークレットARN取得
-TS_SECRET_ARN=$(aws secretsmanager describe-secret \
-  --secret-id mailserver/tailscale/fargate-auth-key \
-  --query 'ARN' \
-  --output text)
-
-echo "Tailscale Secret ARN: $TS_SECRET_ARN"
-```
-
-#### SendGrid API Key保存（後ほど設定）
-
-```bash
-# ⚠️ SendGridコンソールでAPI Keyを生成した後に実行
-# セクション4で実施
-```
-
-**⚠️ 注意**: IAM Role、ECS Cluster、CloudWatch Logs は Section 3.1 の Terraform で自動作成されています。手動作成は不要です。
-
----
-
-## 4. SendGrid設定
-
-### 4.1 SendGridアカウント作成
-
-```bash
-# 1. SendGridアカウント作成: https://sendgrid.com/
-# 2. プラン選択: Free（月100通）または Essentials（月50,000通 $19.95/月）
-# 3. アカウント認証完了（メール確認）
-```
-
-### 4.2 SendGrid API Key生成
-
-```bash
-# 1. SendGridコンソールにログイン: https://app.sendgrid.com/
-# 2. Settings → API Keys
-# 3. "Create API Key" クリック
-# 4. API Key Name: mailserver-dell-smtp
-# 5. API Key Permissions: Restricted Access → Mail Send: Full Access
-# 6. "Create & View" クリック
-# 7. API Keyをコピー（SG.XXXXXXXXXXXXXXXXXXXXXXXXXXXX）
-
-# ⚠️ セキュリティ注意: API Key を一時ファイルから読み込む
-# (シェル履歴に残さないため)
-echo "SendGrid API Key を含むファイルを用意してください"
-echo "例: /tmp/sendgrid_api.key (パーミッション 600)"
-read -p "API Key ファイルパス: " SG_KEY_FILE
-
-# ファイルから読み込み
-SENDGRID_API_KEY=$(cat "$SG_KEY_FILE")
-
-# 即座にファイルを削除
-rm -f "$SG_KEY_FILE"
-
-# シェル履歴からも削除
-history -d $((HISTCMD-3))
-history -d $((HISTCMD-2))
-history -d $((HISTCMD-1))
-
-# ⚠️ この値は後ほどDell側Postfix設定で使用します
-```
-
-### 4.3 SendGridドメイン認証
-
-#### プライマリドメイン認証（kuma8088.com）
-
-```bash
-# 1. SendGridコンソール: Settings → Sender Authentication → Domain Authentication
-# 2. "Authenticate Your Domain" クリック
-# 3. DNS Host: Cloudflare
-# 4. Domain: kuma8088.com
-# 5. "Next" → SendGridがDNSレコードを生成
-```
-
-**Cloudflareに追加するDNSレコード**（SendGrid生成値に基づく）:
-
-```
-# SPFレコード
-Type: TXT
-Name: @
-Content: v=spf1 include:sendgrid.net ~all
-TTL: Auto
-
-# DKIMレコード（SendGrid生成）
-Type: CNAME
-Name: s1._domainkey
-Content: s1.domainkey.u12345678.wl.sendgrid.net.
-TTL: Auto
-
-Type: CNAME
-Name: s2._domainkey
-Content: s2.domainkey.u12345678.wl.sendgrid.net.
-TTL: Auto
-
-# DMARCレコード
-Type: TXT
-Name: _dmarc
-Content: v=DMARC1; p=quarantine; rua=mailto:naoya.iimura@gmail.com
-TTL: Auto
-```
-
-#### 追加ドメイン認証
-
-同様の手順で以下のドメインも認証：
-- fx-trader-life.com
-- webmakeprofit.org
-- webmakesprofit.com
-
-### 4.4 SendGrid認証確認
-
-```bash
-# SendGridコンソールでドメイン認証ステータス確認
-# Settings → Sender Authentication → Domain Authentication
-# Status: "Verified" になっていることを確認
-
-# DNS浸透確認
-dig TXT kuma8088.com | grep sendgrid
-dig CNAME s1._domainkey.kuma8088.com
-dig TXT _dmarc.kuma8088.com
-```
-
-### 4.5 SendGrid API Key 管理戦略
-
-#### セキュリティレベル選択ガイド
-
-**Level 1: 開発環境** - ローカルファイル管理（最も簡単）
-- API Key を Dell ホスト上の `/opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/sasl_passwd` に直接保存
-- パーミッション 600 で保護
-- バックアップ時は暗号化必須
-
-**Level 2: 商用環境** - AWS Secrets Manager 統合（推奨）
-- API Key を AWS Secrets Manager に保存
-- Dell ホストから AWS CLI で動的取得
-- 定期的なローテーション機能利用可能
-- 監査ログ記録
-
-#### Level 1 実装（開発環境）
-
-```bash
-# Dell ホスト上で直接ファイル作成（セクション6.2で実施）
-# 後述の「SendGrid認証情報設定」セクションを参照
-echo "Level 1（ローカルファイル管理）を選択 - セクション6.2で設定"
-```
-
-#### Level 2 実装（商用環境 - 推奨）
-
-```bash
-# Secrets Managerにシークレット作成
-aws secretsmanager create-secret \
-  --name mailserver/sendgrid/api-key \
-  --description "SendGrid API Key for SMTP Relay" \
-  --secret-string "$SENDGRID_API_KEY"
-
-# シークレットARN取得
-SENDGRID_SECRET_ARN=$(aws secretsmanager describe-secret \
-  --secret-id mailserver/sendgrid/api-key \
-  --query 'ARN' \
-  --output text)
-
-echo "SendGrid Secret ARN: $SENDGRID_SECRET_ARN"
-
-# Dell ホストでの取得スクリプト作成（セクション6.2で使用）
-cat > ~/fetch-sendgrid-key.sh << 'EOF'
-#!/bin/bash
-# Secrets Manager から SendGrid API Key を取得
-aws secretsmanager get-secret-value \
-  --secret-id mailserver/sendgrid/api-key \
-  --query 'SecretString' \
-  --output text
-EOF
-
-chmod 700 ~/fetch-sendgrid-key.sh
-
-echo "✅ Level 2（Secrets Manager）設定完了"
-echo "Dell ホストで ~/fetch-sendgrid-key.sh を実行して API Key を取得してください"
-```
-
----
-
-## 5. Tailscale VPN設定
-
-### 5.1 Tailscaleインストール（Dell）
-
-```bash
-# Tailscaleリポジトリ追加
-curl -fsSL https://pkgs.tailscale.com/stable/rhel/9/tailscale.repo | \
-  sudo tee /etc/yum.repos.d/tailscale.repo
-
-# Tailscaleインストール
-sudo dnf install -y tailscale
-
-# Tailscaleサービス起動と自動起動設定
-sudo systemctl enable --now tailscaled
-
-# Tailscaleネットワークに参加（ブラウザで認証）
-sudo tailscale up --accept-routes
+# 1. EC2インスタンス状態確認
+aws ec2 describe-instances \
+  --instance-ids $(terraform output -raw ec2_instance_id) \
+  --query 'Reservations[0].Instances[0].{State:State.Name,PublicIP:PublicIpAddress,PrivateIP:PrivateIpAddress}' \
+  --output table
+
+# 期待される出力:
+# --------------------------------
+# | DescribeInstances            |
+# +------------+------------------+
+# | PrivateIP  | 10.0.1.xxx       |
+# | PublicIP   | 43.207.242.167   |
+# | State      | running          |
+# +------------+------------------+
+
+# 2. User Data実行確認
+aws ec2 get-console-output \
+  --instance-id $(terraform output -raw ec2_instance_id) \
+  --latest
+
+# "EC2 MX Gateway Setup Complete" が表示されることを確認
+
+# 3. SSH接続確認 (ec2-user)
+ssh ec2-user@43.207.242.167
+
+# EC2内で確認:
+sudo su -
 
 # Tailscale状態確認
 tailscale status
+# 出力例:
+# 100.xxx.xxx.xxx mailserver-mx-ec2    tagged-devices linux   -
 
-# TailscaleネットワークIPアドレス確認
-tailscale ip -4
-# 出力例: 100.x.x.x
+# Docker Container確認
+docker ps
+# 出力例:
+# CONTAINER ID   IMAGE                 STATUS    PORTS
+# xxxxx          boky/postfix:latest   Up
 
-# ホスト名設定
-sudo tailscale set --hostname mailserver
+# Postfixログ確認
+docker logs mailserver-postfix
+# 出力例:
+# ‣ NOTE  Forwarding all emails to [100.110.222.53]:2525 without any authentication.
 
-# MagicDNS名確認
-MAGICDNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName')
-echo "MagicDNS名: $MAGICDNS_NAME"
-# 出力例: mailserver.tail67811d.ts.net.
-```
-
-### 5.2 Tailscale ACL設定
-
-```bash
-# 1. Tailscaleコンソール: https://login.tailscale.com/admin/acls
-# 2. 以下のACLルールを追加
-```
-
-**ACL設定内容**:
-
-```json
-{// Example/default ACLs for unrestricted connections.
-	// Declare static groups of users. Use autogroups for all users or users with a specific role.
-	// "groups": {
-	//   "group:example": ["alice@example.com", "bob@example.com"],
-	// },
-
-	// Define the tags which can be applied to devices and by which users.
-	// "tagOwners": {
-	//   "tag:example": ["autogroup:admin"],
-	// },
-
-	// Define grants that govern access for users, groups, autogroups, tags,
-	// Tailscale IP addresses, and subnet ranges.
-	"grants": [
-		// Allow all connections.
-		// Comment this section out if you want to define specific restrictions.
-		{
-			"src": ["tag:fargate-mx"],
-			"dst": ["tag:mailserver"],
-			"ip":  ["tcp:25", "tcp:2525", "udp:41641"],
-		},
-		{
-			"src": ["autogroup:member"],
-			"dst": ["tag:mailserver"],
-			"ip":  ["tcp:993", "tcp:995", "tcp:80", "tcp:443", "udp:41641"],
-		},
-		// Allow users in "group:example" to access "tag:example", but only from
-		// devices that are running macOS and have enabled Tailscale client auto-updating.
-		// {"src": ["group:example"], "dst": ["tag:example"], "ip": ["*"], "srcPosture":["posture:autoUpdateMac"]},
-	],
-
-	// Define postures that will be applied to all rules without any specific
-	// srcPosture definition.
-	// "defaultSrcPosture": [
-	//      "posture:anyMac",
-	// ],
-
-	// Define device posture rules requiring devices to meet
-	// certain criteria to access parts of your system.
-	// "postures": {
-	//      // Require devices running macOS, a stable Tailscale
-	//      // version and auto update enabled for Tailscale.
-	//  "posture:autoUpdateMac": [
-	//      "node:os == 'macos'",
-	//      "node:tsReleaseTrack == 'stable'",
-	//      "node:tsAutoUpdate",
-	//  ],
-	//      // Require devices running macOS and a stable
-	//      // Tailscale version.
-	//  "posture:anyMac": [
-	//      "node:os == 'macos'",
-	//      "node:tsReleaseTrack == 'stable'",
-	//  ],
-	// },
-
-	// Define users and devices that can use Tailscale SSH.
-	"ssh": [
-		// Allow all users to SSH into their own devices in check mode.
-		// Comment this section out if you want to define specific restrictions.
-		{
-			"action": "accept",
-			"src":    ["autogroup:member"],
-			"dst":    ["autogroup:self"],
-			"users":  ["autogroup:nonroot", "root"],
-		},
-	],
-
-	"tagOwners": {
-		"tag:fargate-mx": ["autogroup:admin"],
-		"tag:mailserver": ["autogroup:admin"],
-	},
-
-	// Test access rules every time they're saved.
-	// "tests": [
-	//   {
-	//       "src": "alice@example.com",
-	//       "accept": ["tag:example"],
-	//       "deny": ["100.101.102.103:443"],
-	//   },
-	// ],
-}
-
-```
-
-**説明**:
-- `tag:fargate-mx`: Fargateタスクに付与するタグ（Fargate → Dell LMTP Port 2525アクセス許可）
-- `autogroup:members`: 全Tailscaleユーザー（Dell Webmail/IMAP/POP3アクセス許可）
-
-### 5.3 Tailscale HTTPS証明書取得（Dell）
-
-```bash
-# MagicDNS名確認
-MAGICDNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
-echo "MagicDNS名: $MAGICDNS_NAME"
-
-# Tailscale HTTPS証明書取得
-sudo tailscale cert $MAGICDNS_NAME
-
-# 証明書取得成功の確認
-ls -la /var/lib/tailscale/certs/
-
-# 期待される出力:
-# ${MAGICDNS_NAME}.crt (公開鍵証明書)
-# ${MAGICDNS_NAME}.key (秘密鍵)
-
-# 証明書内容確認
-openssl x509 -in /var/lib/tailscale/certs/${MAGICDNS_NAME}.crt -noout -text | grep -A1 "Subject Alternative Name"
-```
-
-### 5.4 firewalld Tailscale統合（Dell）
-
-```bash
-# FirewalldをTailscaleに統合（推奨）
-sudo firewall-cmd --permanent --zone=trusted --add-interface=tailscale0
-sudo firewall-cmd --reload
-
-# 設定確認
-sudo firewall-cmd --list-all --zone=trusted
+# Dellへの接続確認
+nc -zv 100.110.222.53 2525
+# 出力例: Ncat: Connected to 100.110.222.53:2525
 ```
 
 ---
 
-## 6. Dell環境構築
+## 5. 動作テスト・検証
 
-### 6.1 プロジェクトセットアップ
-
-#### ディレクトリ構造作成
+### 5.1 Tailscale接続テスト
 
 ```bash
-# プロジェクトルートディレクトリ作成
-sudo mkdir -p /opt/onprem-infra-system/project-root-infra/services/mailserver
+# EC2からDellへのping
+tailscale ping 100.110.222.53
+# 期待される出力: pong from dell-workstation (100.110.222.53) via DERP in Xms
 
-# 所有権を現在のユーザーに変更
-sudo chown -R $USER:$USER /opt/onprem-infra-system/project-root-infra/services/mailserver
+# EC2からDell LMTPへの接続
+nc -zv 100.110.222.53 2525
+# 期待される出力: Ncat: Connected to 100.110.222.53:2525
 
-# ディレクトリ構造作成
-cd /opt/onprem-infra-system/project-root-infra/services/mailserver
-mkdir -p config/{postfix,dovecot,nginx/conf.d,roundcube,rspamd,clamav}
-mkdir -p data/{mail,db,rspamd,clamav}
-mkdir -p logs/{postfix,dovecot,nginx,roundcube,rspamd,clamav}
-mkdir -p scripts
-mkdir -p backups
-
-# ディレクトリ構造確認
-tree -L 3 /opt/onprem-infra-system/project-root-infra/services/mailserver
+# Dell側からEC2への接続確認 (Dell WorkStationで実行)
+tailscale ping <EC2 Tailscale IP>
+# 期待される出力: pong from mailserver-mx-ec2 via DERP in Xms
 ```
 
-#### 環境変数ファイル作成
+### 5.2 SMTP受信テスト
 
 ```bash
-# .envファイル作成
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/.env << EOF
-# メインドメイン設定
-MAIL_DOMAIN=kuma8088.com
-MAIL_HOSTNAME=mail.kuma8088.com
+# 外部からのSMTP接続テスト
+telnet 43.207.242.167 25
+# 期待される応答:
+# 220 mx.kuma8088.com ESMTP Postfix
 
-# 追加ドメイン（スペース区切り）
-MAIL_ADDITIONAL_DOMAINS="fx-trader-life.com webmakeprofit.org webmakesprofit.com"
+# EHLO送信
+EHLO test.example.com
+# 期待される応答:
+# 250-mx.kuma8088.com
+# 250-PIPELINING
+# 250-SIZE 26214400
+# 250-VRFY
+# 250-ETRN
+# 250-STARTTLS
+# 250-ENHANCEDSTATUSCODES
+# 250-8BITMIME
+# 250 DSN
 
-# データベース設定
-MYSQL_ROOT_PASSWORD=YourStrongRootPassword123!
-MYSQL_DATABASE=roundcube
-MYSQL_USER=roundcube
-MYSQL_PASSWORD=YourStrongRoundcubePassword123!
+# テストメール送信
+MAIL FROM:<test@example.com>
+RCPT TO:<test@kuma8088.com>
+DATA
+Subject: Test Mail from EC2 MX Gateway
 
-# Roundcube設定
-ROUNDCUBE_DES_KEY=YourRandom24CharacterKey!
+This is a test mail.
+.
+QUIT
 
-# 管理者メールアドレス（アラート通知先）
-ADMIN_EMAIL=naoya.iimura@gmail.com
-
-# タイムゾーン
-TZ=Asia/Tokyo
-
-# メールユーザーID
-VMAIL_UID=5000
-VMAIL_GID=5000
-
-# リソース制限（CPU/メモリ）
-POSTFIX_CPU_LIMIT=1.0
-POSTFIX_MEM_LIMIT=2g
-DOVECOT_CPU_LIMIT=1.0
-DOVECOT_MEM_LIMIT=2g
-RSPAMD_CPU_LIMIT=1.0
-RSPAMD_MEM_LIMIT=2g
-CLAMAV_CPU_LIMIT=1.0
-CLAMAV_MEM_LIMIT=2g
-
-# Postfixテンプレート用の可変値
-POSTFIX_RELAYHOST=[smtp.sendgrid.net]:587
-POSTFIX_MESSAGE_SIZE_LIMIT=26214400
-POSTFIX_TLS_CERT_FILE=/var/lib/tailscale/certs/tls.crt
-POSTFIX_TLS_KEY_FILE=/var/lib/tailscale/certs/tls.key
-EOF
-
-# ⚠️ 重要: 以下を必ず変更してください！
-# - MYSQL_ROOT_PASSWORD: 強力なパスワード（16文字以上推奨）
-# - MYSQL_PASSWORD: 強力なパスワード（16文字以上推奨）
-# - ROUNDCUBE_DES_KEY: ランダムな24文字キー
-
-# パーミッション設定（機密情報のため読み取り制限）
-chmod 600 /opt/onprem-infra-system/project-root-infra/services/mailserver/.env
+# 期待される応答:
+# 250 2.0.0 Ok: queued as XXXXX
 ```
 
-### 6.2 Postfix設定（SendGrid Relay専用）
-
-#### Postfix main.cfテンプレート
-
-`main.cf` は `config/postfix/main.cf.tmpl` にテンプレートとして保存されており、コンテナ起動時に `scripts/postfix-entrypoint.sh` が本番ファイルへレンダリングします。手動で `sed` を流す必要はありません。
-
-- `.env` で `MAIL_DOMAIN` / `MAIL_HOSTNAME` / `MAIL_ADDITIONAL_DOMAINS` / `POSTFIX_RELAYHOST` / `POSTFIX_MESSAGE_SIZE_LIMIT` / `POSTFIX_TLS_CERT_FILE` / `POSTFIX_TLS_KEY_FILE` をセットします。
-- 起動時にテンプレート内の `{{...}}` プレースホルダが上記環境変数で置換され、`/etc/postfix/main.cf` が自動生成されます。
-- TLS 証明書名が変化しないよう、`tailscale cert --cert-file /var/lib/tailscale/certs/tls.crt --key-file ...` で固定名を発行しておくと運用が楽になります（詳細は `services/mailserver/README.md` を参照）。
-
-#### SendGrid認証情報設定
-
-**Level 1（ローカルファイル管理）の場合**:
+### 5.3 メールリレー確認
 
 ```bash
-# ⚠️ セクション4.2で取得した $SENDGRID_API_KEY が環境変数に設定されていることを確認
-# 設定されていない場合は再度セキュアな方法で取得
+# EC2でPostfixログ確認
+docker logs mailserver-postfix --tail 20 | grep "relay="
+# 期待される出力:
+# postfix/smtp[xxx]: XXXXXX: to=<test@kuma8088.com>, relay=[100.110.222.53]:2525, ...status=sent
 
-# SASL認証ファイル作成
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/sasl_passwd << EOF
-[smtp.sendgrid.net]:587 apikey:$SENDGRID_API_KEY
-EOF
+# Dell WorkStationでDovecotログ確認
+docker logs mailserver-dovecot --tail 20 | grep "saved mail"
+# 期待される出力:
+# lmtp(xxx): xxxxx: msgid=<xxx>: saved mail to INBOX
 
-# パーミッション設定（必須）
-chmod 600 /opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/sasl_passwd
-
-# 環境変数をクリア（セキュリティ）
-unset SENDGRID_API_KEY
-
-# ⚠️ このファイルはDocker起動後にコンテナ内でpostmapコマンドで処理されます
+# Roundcubeでメール受信確認
+# https://dell-workstation.tail67811d.ts.net/
+# test@kuma8088.com でログイン → 受信トレイにテストメールが表示されること
 ```
 
-**Level 2（Secrets Manager統合）の場合**:
+### 5.4 エラーパターンテスト
+
+#### テスト #1: 無効なドメイン宛メール (拒否されるべき)
 
 ```bash
-# Secrets Manager から API Key を取得
-SENDGRID_API_KEY=$(~/fetch-sendgrid-key.sh)
-
-# SASL認証ファイル作成
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/sasl_passwd << EOF
-[smtp.sendgrid.net]:587 apikey:$SENDGRID_API_KEY
-EOF
-
-# パーミッション設定（必須）
-chmod 600 /opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/sasl_passwd
-
-# 環境変数をクリア（セキュリティ）
-unset SENDGRID_API_KEY
-
-# ⚠️ このファイルはDocker起動後にコンテナ内でpostmapコマンドで処理されます
-
-echo "✅ SendGrid認証情報設定完了（Secrets Manager経由）"
+telnet 43.207.242.167 25
+EHLO test.example.com
+MAIL FROM:<test@example.com>
+RCPT TO:<test@invalid-domain.com>
+# 期待されるエラー:
+# 554 5.7.1 <test@invalid-domain.com>: Relay access denied
+QUIT
 ```
 
-### 6.3 Dovecot設定（LMTP受信 + IMAP/POP3）
-
-#### Dovecot dovecot.conf設定
+#### テスト #2: Tailscale VPN切断時の動作
 
 ```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/config/dovecot/dovecot.conf << EOF
-# プロトコル設定
-protocols = imap pop3 lmtp
+# EC2でTailscale停止
+sudo tailscale down
 
-# メールディレクトリ設定
-mail_location = maildir:/var/mail/vhosts/%d/%n
+# メール送信テスト
+telnet 43.207.242.167 25
+MAIL FROM:<test@example.com>
+RCPT TO:<test@kuma8088.com>
+DATA
+Test mail during Tailscale down
+.
+QUIT
 
-# SSL/TLS設定
-ssl = required
-ssl_cert = </var/lib/tailscale/certs/$MAGICDNS_NAME.crt
-ssl_key = </var/lib/tailscale/certs/$MAGICDNS_NAME.key
-ssl_protocols = !SSLv3 !TLSv1 !TLSv1.1
-ssl_cipher_list = ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384
+# Postfixログ確認
+docker logs mailserver-postfix --tail 20
+# 期待される出力:
+# status=deferred (connect to [100.110.222.53]:2525: No route to host)
 
-# 認証設定
-auth_mechanisms = plain login
-passdb {
-  driver = passwd-file
-  args = scheme=SHA512-CRYPT username_format=%u /etc/dovecot/users
-}
+# Tailscale再接続
+sudo tailscale up --accept-routes
 
-userdb {
-  driver = static
-  args = uid=vmail gid=vmail home=/var/mail/vhosts/%d/%n
-}
+# キューフラッシュ (再送)
+docker exec mailserver-postfix postqueue -f
 
-# LMTP設定（Fargate → Dellへの転送受信）
-service lmtp {
-  inet_listener lmtp {
-    port = 2525
-    address = *
-  }
-}
-
-# IMAP設定
-service imap-login {
-  inet_listener imap {
-    port = 143
-  }
-  inet_listener imaps {
-    port = 993
-    ssl = yes
-  }
-}
-
-# POP3設定
-service pop3-login {
-  inet_listener pop3 {
-    port = 110
-  }
-  inet_listener pop3s {
-    port = 995
-    ssl = yes
-  }
-}
-
-# Postfix SASL認証
-service auth {
-  unix_listener /var/spool/postfix/private/auth {
-    mode = 0660
-    user = postfix
-    group = postfix
-  }
-}
-
-# プラグイン設定
-protocol lmtp {
-  mail_plugins = \$mail_plugins sieve
-}
-
-protocol imap {
-  mail_plugins = \$mail_plugins imap_sieve
-}
-EOF
+# ログ確認 (再送成功)
+docker logs mailserver-postfix --tail 20
+# 期待される出力:
+# status=sent (250 2.0.0 Ok: queued as XXXXX)
 ```
 
-### 6.4 Nginx設定
-
-#### nginx.conf
+### 5.5 パフォーマンステスト
 
 ```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/config/nginx/nginx.conf << 'EOF'
-user nginx;
-worker_processes auto;
-error_log /var/log/nginx/error.log warn;
-pid /var/run/nginx.pid;
-
-events {
-    worker_connections 1024;
-}
-
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
-
-    access_log /var/log/nginx/access.log main;
-
-    sendfile on;
-    tcp_nopush on;
-    keepalive_timeout 65;
-    gzip on;
-
-    include /etc/nginx/conf.d/*.conf;
-}
-EOF
-```
-
-#### Roundcube VirtualHost設定
-
-```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/config/nginx/conf.d/mailserver.conf << EOF
-server {
-    listen 80;
-    server_name $MAGICDNS_NAME;
-
-    # HTTPSへリダイレクト
-    location / {
-        return 301 https://\$server_name\$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl http2;
-    server_name $MAGICDNS_NAME;
-
-    # Tailscale HTTPS証明書
-    ssl_certificate /var/lib/tailscale/certs/$MAGICDNS_NAME.crt;
-    ssl_certificate_key /var/lib/tailscale/certs/$MAGICDNS_NAME.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-
-    # セキュリティヘッダー
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    # Roundcubeへプロキシ
-    location / {
-        proxy_pass http://172.20.0.40:80;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
-        # タイムアウト設定
-        proxy_connect_timeout 600;
-        proxy_send_timeout 600;
-        proxy_read_timeout 600;
-        send_timeout 600;
-
-        # バッファ設定
-        client_max_body_size 25M;
-    }
-}
-EOF
-```
-
-### 6.5 Docker Compose設定
-
-```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/docker-compose.yml << 'EOF'
-version: '3.8'
-
-networks:
-  mailserver_network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
-
-volumes:
-  mail_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/mail
-  db_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/db
-  rspamd_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/rspamd
-  clamav_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/clamav
-
-services:
-  # MariaDB データベース
-  mariadb:
-    image: mariadb:10.11.7
-    container_name: mailserver-mariadb
-    hostname: mariadb
-    restart: always
-    networks:
-      mailserver_network:
-        ipv4_address: 172.20.0.60
-    environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - TZ=${TZ}
-    volumes:
-      - db_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # Postfix MTA (SendGrid Relay専用)
-  postfix:
-    image: bokysan/postfix:latest
-    container_name: mailserver-postfix
-    hostname: ${MAIL_HOSTNAME}
-    restart: always
-    networks:
-      mailserver_network:
-        ipv4_address: 172.20.0.20
-    ports:
-      - "587:587"
-    environment:
-      - HOSTNAME=${MAIL_HOSTNAME}
-      - DOMAIN=${MAIL_DOMAIN}
-      - TZ=${TZ}
-    volumes:
-      - ./config/postfix:/etc/postfix/custom
-      - mail_data:/var/mail/vhosts
-      - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
-      - ./logs/postfix:/var/log
-    depends_on:
-      - rspamd
-    deploy:
-      resources:
-        limits:
-          cpus: '${POSTFIX_CPU_LIMIT}'
-          memory: '${POSTFIX_MEM_LIMIT}'
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "587"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Dovecot MDA (LMTP + IMAP/POP3)
-  dovecot:
-    image: dovecot/dovecot:2.3.21
-    container_name: mailserver-dovecot
-    hostname: dovecot
-    restart: always
-    networks:
-      mailserver_network:
-        ipv4_address: 172.20.0.30
-    ports:
-      - "2525:2525"  # LMTP (Fargate → Dell)
-      - "993:993"    # IMAPS
-      - "995:995"    # POP3S
-    environment:
-      - TZ=${TZ}
-    volumes:
-      - ./config/dovecot:/etc/dovecot/custom
-      - mail_data:/var/mail/vhosts
-      - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
-      - ./logs/dovecot:/var/log
-    deploy:
-      resources:
-        limits:
-          cpus: '${DOVECOT_CPU_LIMIT}'
-          memory: ${DOVECOT_MEM_LIMIT}
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2525"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Rspamd スパムフィルタ
-  rspamd:
-    image: rspamd/rspamd:3.8
-    container_name: mailserver-rspamd
-    hostname: rspamd
-    restart: always
-    networks:
-      mailserver_network:
-        ipv4_address: 172.20.0.70
-    volumes:
-      - rspamd_data:/var/lib/rspamd
-      - ./config/rspamd:/etc/rspamd/override.d
-      - ./logs/rspamd:/var/log/rspamd
-    environment:
-      - TZ=${TZ}
-    depends_on:
-      - clamav
-    deploy:
-      resources:
-        limits:
-          cpus: '${RSPAMD_CPU_LIMIT}'
-          memory: ${RSPAMD_MEM_LIMIT}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11334/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  # ClamAV ウイルススキャン
-  clamav:
-    image: clamav/clamav:1.3
-    container_name: mailserver-clamav
-    hostname: clamav
-    restart: always
-    networks:
-      mailserver_network:
-        ipv4_address: 172.20.0.80
-    volumes:
-      - clamav_data:/var/lib/clamav
-      - ./logs/clamav:/var/log/clamav
-    environment:
-      - TZ=${TZ}
-    deploy:
-      resources:
-        limits:
-          cpus: '${CLAMAV_CPU_LIMIT}'
-          memory: ${CLAMAV_MEM_LIMIT}
-    healthcheck:
-      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-
-  # Roundcube Webmail
-  roundcube:
-    image: roundcube/roundcubemail:1.6.7-apache
-    container_name: mailserver-roundcube
-    hostname: roundcube
-    restart: always
-    networks:
-      mailserver_network:
-        ipv4_address: 172.20.0.40
-    environment:
-      - ROUNDCUBEMAIL_DB_TYPE=mysql
-      - ROUNDCUBEMAIL_DB_HOST=mariadb
-      - ROUNDCUBEMAIL_DB_NAME=${MYSQL_DATABASE}
-      - ROUNDCUBEMAIL_DB_USER=${MYSQL_USER}
-      - ROUNDCUBEMAIL_DB_PASSWORD=${MYSQL_PASSWORD}
-      - ROUNDCUBEMAIL_DEFAULT_HOST=ssl://dovecot
-      - ROUNDCUBEMAIL_DEFAULT_PORT=993
-      - ROUNDCUBEMAIL_SMTP_SERVER=tls://postfix
-      - ROUNDCUBEMAIL_SMTP_PORT=587
-      - ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE=25M
-      - ROUNDCUBEMAIL_DES_KEY=${ROUNDCUBE_DES_KEY}
-      - TZ=${TZ}
-    volumes:
-      - ./config/roundcube:/var/roundcube/config
-      - ./logs/roundcube:/var/log/roundcube
-    depends_on:
-      - mariadb
-      - dovecot
-      - postfix
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:1.26-alpine
-    container_name: mailserver-nginx
-    hostname: nginx
-    restart: always
-    networks:
-      mailserver_network:
-        ipv4_address: 172.20.0.10
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - TZ=${TZ}
-    volumes:
-      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
-      - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
-      - ./logs/nginx:/var/log/nginx
-    depends_on:
-      - roundcube
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-EOF
-
-# docker-compose.ymlのシンタックスチェック
-cd /opt/onprem-infra-system/project-root-infra/services/mailserver
-docker compose config
-```
-
-### 6.6 Dell メールサーバー起動と検証
-
-#### 6.6.1 コンテナ起動
-
-```bash
-cd /opt/onprem-infra-system/project-root-infra/services/mailserver
-
-# 全サービス起動
-docker compose up -d
-
-# 初回起動ログ確認（イメージプル状況）
-docker compose logs --tail=100
-```
-
-#### 6.6.2 起動検証スクリプト作成
-
-```bash
-# 自動化された起動検証スクリプト作成
-cat > ~/validate-docker-services.sh << 'EOF'
-#!/bin/bash
-set -e
-
-COMPOSE_DIR="/opt/onprem-infra-system/project-root-infra/services/mailserver"
-MAX_WAIT=180  # 最大3分待機
-
-cd $COMPOSE_DIR
-
-echo "=== Docker Compose サービス起動検証 ==="
-echo "検証開始時刻: $(date)"
-echo ""
-
-# 全サービスリスト
-SERVICES=("mariadb" "postfix" "dovecot" "roundcube" "rspamd" "clamav" "nginx")
-
-# 起動待機（最大3分）
-echo "⏳ サービス起動待機中..."
-ELAPSED=0
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-  ALL_RUNNING=true
-
-  for SERVICE in "${SERVICES[@]}"; do
-    STATUS=$(docker compose ps $SERVICE --format json | jq -r '.[0].State' 2>/dev/null || echo "missing")
-    if [ "$STATUS" != "running" ]; then
-      ALL_RUNNING=false
-      break
-    fi
-  done
-
-  if [ "$ALL_RUNNING" = true ]; then
-    echo "✅ 全サービスが起動しました（${ELAPSED}秒経過）"
-    break
-  fi
-
-  sleep 5
-  ELAPSED=$((ELAPSED + 5))
-  echo "   待機中... ${ELAPSED}/${MAX_WAIT}秒"
+# 同時接続テスト (10並列)
+for i in {1..10}; do
+  (
+    echo "EHLO test.example.com"
+    sleep 1
+    echo "QUIT"
+  ) | nc 43.207.242.167 25 &
 done
-
-if [ $ELAPSED -ge $MAX_WAIT ]; then
-  echo "❌ タイムアウト: 一部のサービスが起動しませんでした"
-  docker compose ps
-  exit 1
-fi
-
-echo ""
-echo "=== サービス個別ヘルスチェック ==="
-
-# MariaDB ヘルスチェック
-echo -n "MariaDB: "
-MARIADB_HEALTH=$(docker inspect mailserver-mariadb --format='{{.State.Health.Status}}' 2>/dev/null || echo "no-healthcheck")
-if [ "$MARIADB_HEALTH" = "healthy" ]; then
-  echo "✅ Healthy"
-else
-  echo "⚠️ Status: $MARIADB_HEALTH"
-fi
-
-# Postfix ポート確認
-echo -n "Postfix (Port 587): "
-POSTFIX_PORT=$(docker compose ps postfix --format json | jq -r '.[0].Publishers[] | select(.TargetPort==587) | .PublishedPort' 2>/dev/null || echo "missing")
-if [ "$POSTFIX_PORT" = "587" ]; then
-  echo "✅ Listening on 0.0.0.0:587"
-else
-  echo "❌ Port 587 not exposed"
-  exit 1
-fi
-
-# Dovecot LMTP ポート確認
-echo -n "Dovecot (Port 2525 LMTP): "
-DOVECOT_PORT=$(docker compose ps dovecot --format json | jq -r '.[0].Publishers[] | select(.TargetPort==2525) | .PublishedPort' 2>/dev/null || echo "missing")
-if [ "$DOVECOT_PORT" = "2525" ]; then
-  echo "✅ Listening on 0.0.0.0:2525"
-else
-  echo "❌ Port 2525 (LMTP) not exposed"
-  exit 1
-fi
-
-# Roundcube ポート確認
-echo -n "Roundcube (Port 8080): "
-ROUNDCUBE_PORT=$(docker compose ps roundcube --format json | jq -r '.[0].Publishers[] | select(.TargetPort==8080) | .PublishedPort' 2>/dev/null || echo "missing")
-if [ "$ROUNDCUBE_PORT" = "8080" ]; then
-  echo "✅ Listening on 0.0.0.0:8080"
-else
-  echo "⚠️ Port 8080 not exposed (check nginx proxy)"
-fi
-
-# Nginx ポート確認
-echo -n "Nginx (Port 80/443): "
-NGINX_PORT_80=$(docker compose ps nginx --format json | jq -r '.[0].Publishers[] | select(.TargetPort==80) | .PublishedPort' 2>/dev/null || echo "missing")
-NGINX_PORT_443=$(docker compose ps nginx --format json | jq -r '.[0].Publishers[] | select(.TargetPort==443) | .PublishedPort' 2>/dev/null || echo "missing")
-if [ "$NGINX_PORT_80" = "80" ] && [ "$NGINX_PORT_443" = "443" ]; then
-  echo "✅ Listening on 0.0.0.0:80 and 0.0.0.0:443"
-else
-  echo "⚠️ HTTP/HTTPS ports not fully exposed"
-fi
-
-# Rspamd 起動確認
-echo -n "Rspamd: "
-RSPAMD_STATUS=$(docker compose ps rspamd --format json | jq -r '.[0].State' 2>/dev/null || echo "missing")
-if [ "$RSPAMD_STATUS" = "running" ]; then
-  echo "✅ Running"
-else
-  echo "❌ Status: $RSPAMD_STATUS"
-  exit 1
-fi
-
-# ClamAV 起動確認
-echo -n "ClamAV: "
-CLAMAV_STATUS=$(docker compose ps clamav --format json | jq -r '.[0].State' 2>/dev/null || echo "missing")
-if [ "$CLAMAV_STATUS" = "running" ]; then
-  echo "✅ Running"
-else
-  echo "❌ Status: $CLAMAV_STATUS"
-  exit 1
-fi
-
-echo ""
-echo "=== ボリューム検証 ==="
-VOLUMES=("mail_data" "db_data" "rspamd_data" "clamav_data")
-for VOL in "${VOLUMES[@]}"; do
-  VOL_PATH=$(docker volume inspect mailserver_$VOL --format '{{.Mountpoint}}' 2>/dev/null || echo "missing")
-  if [ "$VOL_PATH" != "missing" ]; then
-    echo "✅ $VOL: $VOL_PATH"
-  else
-    echo "❌ $VOL: Volume not found"
-    exit 1
-  fi
-done
-
-echo ""
-echo "=== 検証サマリー ==="
-echo "✅ 全サービスが正常に起動しました"
-echo "✅ 全ポートが適切に公開されています"
-echo "✅ 全ボリュームがマウントされています"
-echo ""
-echo "次のステップ:"
-echo "1. セクション 6.7: Postfix SASL認証ファイル生成"
-echo "2. セクション 6.8: ユーザー作成"
-echo "3. セクション 7: Fargate ↔ Dell 統合テスト"
-EOF
-
-chmod +x ~/validate-docker-services.sh
-
-# 検証実行
-~/validate-docker-services.sh
-```
-
-**期待される出力**:
-```
-=== Docker Compose サービス起動検証 ===
-検証開始時刻: 2025-11-02 12:00:00
-
-⏳ サービス起動待機中...
-✅ 全サービスが起動しました（45秒経過）
-
-=== サービス個別ヘルスチェック ===
-MariaDB: ✅ Healthy
-Postfix (Port 587): ✅ Listening on 0.0.0.0:587
-Dovecot (Port 2525 LMTP): ✅ Listening on 0.0.0.0:2525
-Roundcube (Port 8080): ✅ Listening on 0.0.0.0:8080
-Nginx (Port 80/443): ✅ Listening on 0.0.0.0:80 and 0.0.0.0:443
-Rspamd: ✅ Running
-ClamAV: ✅ Running
-
-=== ボリューム検証 ===
-✅ mail_data: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/mail
-✅ db_data: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/db
-✅ rspamd_data: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/rspamd
-✅ clamav_data: /opt/onprem-infra-system/project-root-infra/services/mailserver/data/clamav
-
-=== 検証サマリー ===
-✅ 全サービスが正常に起動しました
-✅ 全ポートが適切に公開されています
-✅ 全ボリュームがマウントされています
-
-次のステップ:
-1. セクション 6.7: Postfix SASL認証ファイル生成
-2. セクション 6.8: ユーザー作成
-3. セクション 7: Fargate ↔ Dell 統合テスト
-```
-
-**⚠️ 検証失敗時のトラブルシューティング**:
-
-```bash
-# 特定サービスのログ確認
-docker compose logs <service-name> --tail=100
-
-# 全サービス状態確認
-docker compose ps
-
-# コンテナ再起動
-docker compose restart <service-name>
-
-# 完全再起動
-docker compose down
-docker compose up -d
-~/validate-docker-services.sh
-```
-
-### 6.7 Postfix SASL認証ファイル生成
-
-```bash
-# Postfixコンテナ内でpostmapコマンド実行
-docker exec mailserver-postfix postmap /etc/postfix/custom/sasl_passwd
-
-# Postfix再起動
-docker compose restart postfix
-
-# Postfix設定確認
-docker exec mailserver-postfix postconf | grep relay
-```
-
-### 6.8 ユーザー作成
-
-#### ユーザー追加スクリプト作成
-
-```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/add-user.sh << 'EOF'
-#!/bin/bash
-# メールユーザー追加スクリプト
-
-EMAIL=$1
-PASSWORD=$2
-
-if [ -z "$EMAIL" ] || [ -z "$PASSWORD" ]; then
-    echo "Usage: $0 <email> <password>"
-    exit 1
-fi
-
-DOMAIN=$(echo $EMAIL | cut -d@ -f2)
-USER=$(echo $EMAIL | cut -d@ -f1)
-
-# Dovecot users ファイルにユーザー追加
-HASH=$(docker run --rm -it dovecot/dovecot doveadm pw -s SHA512-CRYPT -p $PASSWORD | tr -d '\r')
-echo "$EMAIL:$HASH:5000:5000::/var/mail/vhosts/$DOMAIN/$USER::" \
-  >> /opt/onprem-infra-system/project-root-infra/services/mailserver/config/dovecot/users
-
-# メールディレクトリ作成
-mkdir -p /opt/onprem-infra-system/project-root-infra/services/mailserver/data/mail/$DOMAIN/$USER/{cur,new,tmp}
-chown -R 5000:5000 /opt/onprem-infra-system/project-root-infra/services/mailserver/data/mail/$DOMAIN/$USER
-
-# サービス再起動
-docker compose restart dovecot postfix
-
-echo "User $EMAIL added successfully"
-EOF
-
-chmod +x /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/add-user.sh
-```
-
-#### 初期ユーザー作成
-
-```bash
-# Dovecot usersファイル作成
-touch /opt/onprem-infra-system/project-root-infra/services/mailserver/config/dovecot/users
-chmod 600 /opt/onprem-infra-system/project-root-infra/services/mailserver/config/dovecot/users
-
-# 各ドメインでテストユーザー追加例
-/opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/add-user.sh admin@kuma8088.com YourStrongPassword1!
-/opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/add-user.sh admin@fx-trader-life.com YourStrongPassword2!
-
-# ⚠️ パスワードを実際の強力なパスワードに置換してください
-```
-
----
-
-## 7. 統合テスト
-
-### 7.1 Fargate Task Definition作成
-
-```bash
-# Task Definitionファイル作成
-cat > /tmp/fargate-task-definition.json << EOF
-{
-  "family": "mailserver-mx-task",
-  "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
-  "cpu": "256",
-  "memory": "512",
-  "executionRoleArn": "$EXECUTION_ROLE_ARN",
-  "taskRoleArn": "$TASK_ROLE_ARN",
-  "containerDefinitions": [
-    {
-      "name": "postfix",
-      "image": "postfix:3.8-alpine",
-      "essential": true,
-      "environment": [
-        {
-          "name": "RELAY_HOST",
-          "value": "mailserver.tail67811d.ts.net:2525"
-        },
-        {
-          "name": "RELAY_PROTOCOLS",
-          "value": "lmtp"
-        }
-      ],
-      "portMappings": [
-        {
-          "containerPort": 25,
-          "protocol": "tcp"
-        }
-      ],
-      "healthCheck": {
-        "command": ["CMD-SHELL", "nc -z localhost 25 || exit 1"],
-        "interval": 30,
-        "timeout": 5,
-        "retries": 3,
-        "startPeriod": 60
-      },
-      "logConfiguration": {
-        "logDriver": "awslogs",
-        "options": {
-          "awslogs-group": "/ecs/mailserver-mx",
-          "awslogs-region": "ap-northeast-1",
-          "awslogs-stream-prefix": "postfix"
-        }
-      }
-    },
-    {
-      "name": "tailscale",
-      "image": "tailscale/tailscale:stable",
-      "essential": true,
-      "secrets": [
-        {
-          "name": "TS_AUTHKEY",
-          "valueFrom": "$TS_SECRET_ARN"
-        }
-      ],
-      "environment": [
-        {
-          "name": "TS_STATE_DIR",
-          "value": "/var/lib/tailscale"
-        },
-        {
-          "name": "TS_USERSPACE",
-          "value": "true"
-        }
-      ],
-      "logConfiguration": {
-        "logDriver": "awslogs",
-        "options": {
-          "awslogs-group": "/ecs/mailserver-mx",
-          "awslogs-region": "ap-northeast-1",
-          "awslogs-stream-prefix": "tailscale"
-        }
-      }
-    }
-  ]
-}
-EOF
-
-# ⚠️ RELAY_HOSTを実際のDell Tailscale MagicDNS名に変更
-MAGICDNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName')
-sed -i "s/mailserver\.tail67811d\.ts\.net/$MAGICDNS_NAME/g" /tmp/fargate-task-definition.json
-
-# Task Definition登録
-aws ecs register-task-definition \
-  --cli-input-json file:///tmp/fargate-task-definition.json
-
-# Task Definition ARN取得
-TASK_DEF_ARN=$(aws ecs list-task-definitions \
-  --family-prefix mailserver-mx-task \
-  --query 'taskDefinitionArns[0]' \
-  --output text)
-
-echo "Task Definition ARN: $TASK_DEF_ARN"
-
-# クリーンアップ
-rm /tmp/fargate-task-definition.json
-```
-
-### 7.2 ECS Service作成（Public IP Fargate構成）
-
-```bash
-# ECS Service作成（ALB不使用、Public IP直接受信）
-aws ecs create-service \
-  --cluster mailserver-cluster \
-  --service-name mailserver-mx-service \
-  --task-definition $TASK_DEF_ARN \
-  --desired-count 1 \
-  --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_1,$SUBNET_2],securityGroups=[$FARGATE_SG_ID],assignPublicIp=ENABLED}"
-
-# Service起動確認
-aws ecs describe-services \
-  --cluster mailserver-cluster \
-  --services mailserver-mx-service
-
-# Task起動確認（1-2分待機）
-watch -n 5 'aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service'
-
-# TaskのPublic IP取得
-TASK_ARN=$(aws ecs list-tasks \
-  --cluster mailserver-cluster \
-  --service-name mailserver-mx-service \
-  --query 'taskArns[0]' \
-  --output text)
-
-ENI_ID=$(aws ecs describe-tasks \
-  --cluster mailserver-cluster \
-  --tasks $TASK_ARN \
-  --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' \
-  --output text)
-
-FARGATE_PUBLIC_IP=$(aws ec2 describe-network-interfaces \
-  --network-interface-ids $ENI_ID \
-  --query 'NetworkInterfaces[0].Association.PublicIp' \
-  --output text)
-
-echo "⚠️ 重要: Fargate Task Public IP: $FARGATE_PUBLIC_IP"
-echo "⚠️ このIPアドレスをMXレコードに設定してください"
-echo "⚠️ 注意: Taskが再起動するとPublic IPは変わります（Elastic IP使用を推奨）"
-```
-
-**🔄 Elastic IP使用の場合**:
-
-```bash
-# 既に作成したElastic IPをENIに関連付け
-aws ec2 associate-address \
-  --allocation-id $EIP_ALLOC_ID \
-  --network-interface-id $ENI_ID
-
-# Elastic IP関連付け確認
-aws ec2 describe-addresses --allocation-ids $EIP_ALLOC_ID
-
-echo "✅ Elastic IP ($ELASTIC_IP) がFargateタスクに関連付けられました"
-echo "⚠️ MXレコードに設定するIPアドレス: $ELASTIC_IP"
-```
-
-### 7.3 DNS設定（MXレコード）
-
-**⚠️ 重要**: このセクションでは、セクション3.1で取得したElastic IPをMXレコードに設定します。
-
-**前提条件**:
-- ✅ セクション3.1 Terraform apply完了（Elastic IP取得済み）
-- ✅ セクション7.2 ECS Service作成完了（Fargateタスク起動済み）
-- ✅ 環境変数 `$ELASTIC_IP` が設定されていること（セクション3.1で設定）
-
-**依存関係**:
-```
-セクション3.1: Terraform apply → Elastic IP取得 ($ELASTIC_IP)
-    ↓
-セクション7.2: ECS Service作成 → Fargateタスク起動
-    ↓
-セクション7.3: DNS設定 → MXレコードに $ELASTIC_IP を設定
-```
-
-#### Option 1: Elastic IP使用の場合（推奨）
-
-```bash
-# 0. Elastic IP確認（セクション3.1で取得した値）
-echo "設定するElastic IP: $ELASTIC_IP"
-# 期待値例: 54.123.45.67
-
-# ⚠️ この値をメモしてDNS設定に使用してください
-
-# 1. Cloudflare管理画面にログイン
-# 2. kuma8088.comドメインを選択
-# 3. DNS → Records → Add record
-
-# Aレコード追加（Elastic IP用）
-# Type: A
-# Name: mx
-# IPv4 address: $ELASTIC_IP の値を入力 (例: 54.123.45.67)
-# TTL: Auto
-
-# MXレコード追加
-# Type: MX
-# Name: @
-# Mail server: mx.kuma8088.com
-# Priority: 10
-# TTL: Auto
-
-# 追加ドメインも同様にAレコード + MXレコード設定
-# - fx-trader-life.com → mx.fx-trader-life.com → $ELASTIC_IP
-# - webmakeprofit.org → mx.webmakeprofit.org → $ELASTIC_IP
-# - webmakesprofit.com → mx.webmakesprofit.com → $ELASTIC_IP
-```
-
-#### Option 2: Dynamic Public IP使用の場合（非推奨）
-
-```bash
-# ⚠️ Taskが再起動するたびにPublic IPが変わるため、手動更新が必要
-
-# Aレコード追加（現在のPublic IP）
-# Type: A
-# Name: mx
-# IPv4 address: <FARGATE_PUBLIC_IP> (例: 3.234.56.78)
-# TTL: 300 (5分) ← 短いTTLを設定
-
-# MXレコード追加
-# Type: MX
-# Name: @
-# Mail server: mx.kuma8088.com
-# Priority: 10
-# TTL: Auto
-```
-
-#### DNS設定確認
-
-```bash
-# MXレコード確認
-dig MX kuma8088.com
-
-# 期待される出力:
-# kuma8088.com.  300  IN  MX  10 mx.kuma8088.com.
-
-# Aレコード確認
-dig A mx.kuma8088.com
-
-# 期待される出力:
-# mx.kuma8088.com.  300  IN  A  <ELASTIC_IP>
-```
-
-### 7.4 統合テスト実施
-
-#### Fargate → Dell LMTP転送テスト
-
-```bash
-# 外部からPort 25経由でテストメール送信
-# Gmailなどから kuma8088.com ドメイン宛にメール送信
-
-# Dell側ログ確認
-docker compose logs dovecot | grep -i lmtp
-docker compose logs rspamd | tail -50
-
-# メールボックス確認
-ls -la /opt/onprem-infra-system/project-root-infra/services/mailserver/data/mail/kuma8088.com/admin/new/
-```
-
-#### Dell → SendGrid送信テスト
-
-```bash
-# WEBメール（https://${MAGICDNS_NAME}）からログイン
-# admin@kuma8088.com で外部アドレス宛に送信
-
-# Dell側Postfixログ確認
-docker compose logs postfix | grep -i sendgrid
-
-# SendGrid Activity確認
-# SendGridコンソール: Activity → Email Activity
-```
-
-#### WEBメールアクセステスト
-
-```bash
-# ブラウザで以下にアクセス（Tailscaleクライアントから）
-# https://${MAGICDNS_NAME}
-
-# ログイン情報:
-# ユーザー名: admin@kuma8088.com
-# パスワード: YourStrongPassword1!
-```
-
----
-
-## 8. 自動化設定
-
-### 8.1 バックアップスクリプト作成
-
-```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup.sh << 'EOF'
-#!/bin/bash
-# メールサーバーバックアップスクリプト
-
-BACKUP_DIR="/opt/onprem-infra-system/project-root-infra/services/mailserver/backups"
-DATE=$(date +%Y%m%d_%H%M%S)
-
-# バックアップディレクトリ確認
-mkdir -p $BACKUP_DIR
-
-# メールデータバックアップ
-echo "Backing up mail data..."
-tar -czf $BACKUP_DIR/mail_$DATE.tar.gz -C /opt/onprem-infra-system/project-root-infra/services/mailserver/data mail/
-
-# データベースバックアップ
-echo "Backing up database..."
-docker exec mailserver-mariadb mysqldump -u root -p$MYSQL_ROOT_PASSWORD roundcube \
-  > $BACKUP_DIR/db_$DATE.sql
-
-# 設定ファイルバックアップ
-echo "Backing up config..."
-tar -czf $BACKUP_DIR/config_$DATE.tar.gz -C /opt/onprem-infra-system/project-root-infra/services/mailserver config/
-
-# Tailscale証明書バックアップ
-echo "Backing up Tailscale certs..."
-tar -czf $BACKUP_DIR/tailscale_certs_$DATE.tar.gz /var/lib/tailscale/certs/
-
-# 7日以上前のバックアップ削除
-echo "Cleaning old backups..."
-find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
-find $BACKUP_DIR -name "*.sql" -mtime +7 -delete
-
-echo "Backup completed: $DATE"
-EOF
-
-chmod +x /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup.sh
-
-# バックアップテスト実行
-/opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup.sh
-```
-
-### 8.2 Tailscale証明書更新スクリプト
-
-```bash
-cat > /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/tailscale-renew.sh << 'EOF'
-#!/bin/bash
-# Tailscale HTTPS証明書更新スクリプト
-
-set -euo pipefail
-
-MAGICDNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName')
-CERT_DIR="/var/lib/tailscale/certs"
-
-tailscale cert --cert-file ${CERT_DIR}/${MAGICDNS_NAME}.crt \
-               --key-file  ${CERT_DIR}/${MAGICDNS_NAME}.key \
-               "${MAGICDNS_NAME}"
-
-# サービスへ反映
-docker restart mailserver-nginx mailserver-postfix mailserver-dovecot
-EOF
-
-chmod +x /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/tailscale-renew.sh
-
-# 証明書更新テスト
-/opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/tailscale-renew.sh
-```
-
-### 8.3 cron設定
-
-```bash
-# cron設定追加
-crontab -e
-
-# 以下を追加:
-# 毎日深夜3:00にバックアップ実行
-0 3 * * * /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup.sh >> /opt/onprem-infra-system/project-root-infra/services/mailserver/logs/backup.log 2>&1
-
-# Tailscale証明書自動更新（日次）
-30 3 * * * /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/tailscale-renew.sh >> /opt/onprem-infra-system/project-root-infra/services/mailserver/logs/tailscale-cert.log 2>&1
-
-# cron設定確認
-crontab -l
-```
-
-### 8.4 Infrastructure Drift検出（推奨: 週次実行）
-
-```bash
-# Terraform管理リソースの構成ドリフト検出スクリプト作成
-cat > ~/check-infrastructure-drift.sh << 'EOF'
-#!/bin/bash
-set -e
-
-cd /opt/onprem-infra-system/project-root-infra/services/mailserver/terraform
-
-echo "=== Infrastructure Drift Detection ==="
-echo "実行日時: $(date)"
-echo ""
-
-# Terraform管理リソースのドリフト検出
-echo "📊 Terraform管理リソースの検証中..."
-terraform plan -detailed-exitcode > /dev/null 2>&1
-EXIT_CODE=$?
-
-if [ $EXIT_CODE -eq 0 ]; then
-  echo "✅ Terraform管理リソース: ドリフトなし"
-elif [ $EXIT_CODE -eq 2 ]; then
-  echo "⚠️ Terraform管理リソース: 構成ドリフト検出"
-  echo "   詳細確認: terraform plan"
-  echo "   修正方法: terraform apply で構成を修正"
-else
-  echo "❌ Terraform管理リソース: エラー発生"
-  echo "   詳細確認: terraform plan"
-  exit 1
-fi
-
-echo ""
-
-# 手動管理リソースの存在確認
-echo "📋 手動管理リソースの検証中..."
-
-# Secrets Manager検証
-echo -n "Secrets Manager Secrets: "
-SECRET_COUNT=$(aws secretsmanager list-secrets \
-  --filters Key=name,Values=mailserver/ \
-  --query 'length(SecretList)' --output text)
-
-if [ "$SECRET_COUNT" -ge 2 ]; then
-  echo "✅ 必要なSecrets存在 ($SECRET_COUNT個)"
-else
-  echo "⚠️ Secrets不足 (期待値: 2個以上、実際: $SECRET_COUNT個)"
-  echo "   確認: aws secretsmanager list-secrets --filters Key=name,Values=mailserver/"
-fi
-
-# ECS Service検証
-echo -n "ECS Service: "
-SERVICE_STATUS=$(aws ecs describe-services \
-  --cluster mailserver-cluster \
-  --services mailserver-mx-service \
-  --query 'services[0].status' --output text 2>/dev/null || echo "NOT_FOUND")
-
-if [ "$SERVICE_STATUS" == "ACTIVE" ]; then
-  DESIRED=$(aws ecs describe-services \
-    --cluster mailserver-cluster \
-    --services mailserver-mx-service \
-    --query 'services[0].desiredCount' --output text)
-  RUNNING=$(aws ecs describe-services \
-    --cluster mailserver-cluster \
-    --services mailserver-mx-service \
-    --query 'services[0].runningCount' --output text)
-
-  if [ "$DESIRED" -eq "$RUNNING" ]; then
-    echo "✅ 正常稼働 (Desired: $DESIRED, Running: $RUNNING)"
-  else
-    echo "⚠️ タスク数不一致 (Desired: $DESIRED, Running: $RUNNING)"
-  fi
-else
-  echo "❌ Serviceが存在しないか、ACTIVE状態ではありません (Status: $SERVICE_STATUS)"
-fi
-
-echo ""
-echo "=== 検出サマリー ==="
-if [ $EXIT_CODE -eq 0 ] && [ "$SECRET_COUNT" -ge 2 ] && [ "$SERVICE_STATUS" == "ACTIVE" ]; then
-  echo "✅ 全リソースの構成が正常です"
-else
-  echo "⚠️ 一部リソースに構成ドリフトまたは異常が検出されました"
-  echo "   詳細は上記の検証結果を確認してください"
-fi
-EOF
-
-chmod +x ~/check-infrastructure-drift.sh
-
-# 手動実行テスト
-~/check-infrastructure-drift.sh
-
-# cron設定追加（週次実行: 毎週日曜日 AM 2:00）
-crontab -e
-
-# 以下を追加:
-# 毎週日曜日 AM 2:00 に Infrastructure Drift検出
-0 2 * * 0 ~/check-infrastructure-drift.sh >> /var/log/infrastructure-drift.log 2>&1
-```
-
-**期待される出力**:
-```
-=== Infrastructure Drift Detection ===
-実行日時: 2025-11-02 02:00:00
-
-📊 Terraform管理リソースの検証中...
-✅ Terraform管理リソース: ドリフトなし
-
-📋 手動管理リソースの検証中...
-Secrets Manager Secrets: ✅ 必要なSecrets存在 (2個)
-ECS Service: ✅ 正常稼働 (Desired: 1, Running: 1)
-
-=== 検出サマリー ===
-✅ 全リソースの構成が正常です
-```
-
-### 8.5 CloudWatch Logs運用要件
-
-**ログ保持期間**: 30日（Terraform設定済み）
-- 理由: コスト最適化（1ヶ月以上の調査は稀）
-- 長期保存が必要な場合: S3エクスポート設定を検討
-
-**推奨アラート設定**（手動設定が必要）:
-
-#### Postfixエラーログ検出
-
-```bash
-# メトリックフィルタ作成
-aws logs put-metric-filter \
-  --log-group-name /ecs/mailserver-mx \
-  --filter-name PostfixErrors \
-  --filter-pattern '[time, container=postfix, level=error, ...]' \
-  --metric-transformations \
-    metricName=PostfixErrorCount,metricNamespace=Mailserver,metricValue=1
-
-# CloudWatch Alarm作成
-aws cloudwatch put-metric-alarm \
-  --alarm-name PostfixHighErrorRate \
-  --alarm-description "Alert when Postfix errors exceed threshold" \
-  --metric-name PostfixErrorCount \
-  --namespace Mailserver \
-  --statistic Sum \
-  --period 300 \
-  --threshold 10 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 1 \
-  --alarm-actions <SNS_TOPIC_ARN>
-```
-
-#### Tailscale接続エラー検出
-
-```bash
-# メトリックフィルタ作成
-aws logs put-metric-filter \
-  --log-group-name /ecs/mailserver-mx \
-  --filter-name TailscaleConnectionErrors \
-  --filter-pattern '[time, container=tailscale, level, msg="*connection*failed*"]' \
-  --metric-transformations \
-    metricName=TailscaleErrorCount,metricNamespace=Mailserver,metricValue=1
-
-# CloudWatch Alarm作成
-aws cloudwatch put-metric-alarm \
-  --alarm-name TailscaleConnectionFailure \
-  --alarm-description "Alert when Tailscale VPN connection fails" \
-  --metric-name TailscaleErrorCount \
-  --namespace Mailserver \
-  --statistic Sum \
-  --period 300 \
-  --threshold 5 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 1 \
-  --alarm-actions <SNS_TOPIC_ARN>
-```
-
-### 8.6 CloudWatch Alarms設定（Public IP Fargate構成）
-
-```bash
-# SNSトピック作成
-SNS_TOPIC_ARN=$(aws sns create-topic \
-  --name mailserver-alerts \
-  --query 'TopicArn' \
-  --output text)
-
-echo "SNS Topic ARN: $SNS_TOPIC_ARN"
-
-# メールサブスクリプション作成
-aws sns subscribe \
-  --topic-arn $SNS_TOPIC_ARN \
-  --protocol email \
-  --notification-endpoint naoya.iimura@gmail.com
-
-# ⚠️ メール確認してサブスクリプション承認してください
-
-# FargateTaskStopped アラーム作成（ALB不使用のためTask停止を監視）
-aws cloudwatch put-metric-alarm \
-  --alarm-name FargateTaskStopped \
-  --alarm-description "Alert when Fargate task count drops to zero" \
-  --metric-name DesiredTaskCount \
-  --namespace AWS/ECS \
-  --statistic Average \
+wait
+
+# CPU/メモリ使用率確認
+aws cloudwatch get-metric-statistics \
+  --namespace Mailserver/EC2 \
+  --metric-name CPU_IDLE \
+  --dimensions Name=InstanceId,Value=$(terraform output -raw ec2_instance_id) \
+  --start-time $(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
-  --threshold 1 \
-  --comparison-operator LessThanThreshold \
-  --evaluation-periods 1 \
-  --dimensions Name=ServiceName,Value=mailserver-mx-service Name=ClusterName,Value=mailserver-cluster \
-  --alarm-actions $SNS_TOPIC_ARN
+  --statistics Average
 
-# FargateHighCPU アラーム作成
-aws cloudwatch put-metric-alarm \
-  --alarm-name FargateHighCPU \
-  --alarm-description "Alert when Fargate CPU exceeds 80%" \
-  --metric-name CPUUtilization \
-  --namespace AWS/ECS \
-  --statistic Average \
-  --period 600 \
-  --threshold 80 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 1 \
-  --dimensions Name=ServiceName,Value=mailserver-mx-service Name=ClusterName,Value=mailserver-cluster \
-  --alarm-actions $SNS_TOPIC_ARN
-
-# FargateHighMemory アラーム作成
-aws cloudwatch put-metric-alarm \
-  --alarm-name FargateHighMemory \
-  --alarm-description "Alert when Fargate Memory exceeds 80%" \
-  --metric-name MemoryUtilization \
-  --namespace AWS/ECS \
-  --statistic Average \
-  --period 600 \
-  --threshold 80 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 1 \
-  --dimensions Name=ServiceName,Value=mailserver-mx-service Name=ClusterName,Value=mailserver-cluster \
-  --alarm-actions $SNS_TOPIC_ARN
-
-# アラーム一覧確認
-aws cloudwatch describe-alarms --alarm-names FargateTaskStopped FargateHighCPU FargateHighMemory
+# 期待される出力: CPU使用率 <50%
 ```
-
-**📊 監視メトリクス説明**:
-- **FargateTaskStopped**: タスクが停止した場合に即座にアラート（ALB不使用のため、タスク停止=メール受信停止）
-- **FargateHighCPU**: CPU使用率が80%を超えた場合にアラート（スケールアップ検討）
-- **FargateHighMemory**: メモリ使用率が80%を超えた場合にアラート（スケールアップ検討）
 
 ---
 
-## 9. トラブルシューティング
+## 6. 監視・運用
 
-### 9.1 Fargateタスクが起動しない
+### 6.1 CloudWatch監視設定
 
-```bash
-# タスク起動状態確認
-aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service
-
-# タスク詳細確認
-TASK_ARN=$(aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service --query 'taskArns[0]' --output text)
-aws ecs describe-tasks --cluster mailserver-cluster --tasks $TASK_ARN
-
-# CloudWatch Logs確認
-aws logs tail /ecs/mailserver-mx --follow
-
-# Tailscale接続確認
-aws logs filter-log-events \
-  --log-group-name /ecs/mailserver-mx \
-  --filter-pattern "tailscale" \
-  --max-items 50
-```
-
-### 9.2 メール受信できない（Fargate → Dell）
-
-#### Public IP疎通確認
+#### 6.1.1 CloudWatch Alarm作成
 
 ```bash
-# Fargate Task Public IP確認
-TASK_ARN=$(aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service --query 'taskArns[0]' --output text)
-ENI_ID=$(aws ecs describe-tasks --cluster mailserver-cluster --tasks $TASK_ARN --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
-FARGATE_PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids $ENI_ID --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+# CPU使用率アラーム
+aws cloudwatch put-metric-alarm \
+  --alarm-name mailserver-ec2-high-cpu \
+  --alarm-description "EC2 MX Gateway CPU usage > 80%" \
+  --metric-name CPU_IDLE \
+  --namespace Mailserver/EC2 \
+  --statistic Average \
+  --period 300 \
+  --evaluation-periods 2 \
+  --threshold 20 \
+  --comparison-operator LessThanThreshold \
+  --dimensions Name=InstanceId,Value=$(terraform output -raw ec2_instance_id)
 
-echo "Fargate Public IP: $FARGATE_PUBLIC_IP"
-
-# 外部からSMTP Port 25疎通確認
-telnet $FARGATE_PUBLIC_IP 25
-# または
-nc -zv $FARGATE_PUBLIC_IP 25
+# メモリ使用率アラーム
+aws cloudwatch put-metric-alarm \
+  --alarm-name mailserver-ec2-high-memory \
+  --alarm-description "EC2 MX Gateway Memory usage > 80%" \
+  --metric-name MEM_USED \
+  --namespace Mailserver/EC2 \
+  --statistic Average \
+  --period 300 \
+  --evaluation-periods 2 \
+  --threshold 80 \
+  --comparison-operator GreaterThanThreshold \
+  --dimensions Name=InstanceId,Value=$(terraform output -raw ec2_instance_id)
 ```
 
-#### Fargate → Dell LMTP転送確認
-
-```bash
-# Dell側LMTP待受確認
-docker exec mailserver-dovecot netstat -tuln | grep 2525
-
-# Tailscale接続確認（Dell）
-tailscale status
-
-# Dovecot LMTPログ確認
-docker compose logs dovecot | grep -i lmtp
-
-# Fargate → Dell疎通確認（Fargate側）
-# ⚠️ Fargateタスク内でテスト実施が必要（ECS Exec有効化が必要）
-```
-
-#### DNS設定確認
-
-```bash
-# MXレコード確認
-dig MX kuma8088.com
-
-# Aレコード確認（Elastic IP使用の場合）
-dig A mx.kuma8088.com
-
-# 外部DNSサーバーからの確認
-dig @8.8.8.8 MX kuma8088.com
-```
-
-### 9.3 メール送信できない（Dell → SendGrid）
+#### 6.1.2 ログストリーム確認
 
 ```bash
 # Postfixログ確認
-docker compose logs postfix | grep -i sendgrid
+aws logs tail /ec2/mailserver-mx --follow --filter-pattern "postfix"
 
-# SendGrid認証確認
-docker exec mailserver-postfix postconf | grep relay
-
-# SendGrid APIキー確認
-cat /opt/onprem-infra-system/project-root-infra/services/mailserver/config/postfix/sasl_passwd
-
-# SendGrid Activity確認
-# SendGridコンソール: Activity → Email Activity
+# User Dataログ確認
+aws logs tail /ec2/mailserver-mx --log-stream-name user-data
 ```
 
-### 9.4 WEBメールアクセスできない
+### 6.2 定期メンテナンス
+
+#### 毎日のタスク
 
 ```bash
-# Nginxログ確認
-docker compose logs nginx | tail -50
+# ログ確認スクリプト (/opt/mailserver/daily-check.sh)
+#!/bin/bash
 
-# Roundcubeログ確認
-docker compose logs roundcube | tail -50
-
-# Tailscale証明書確認
-ls -la /var/lib/tailscale/certs/
+echo "=== Daily Health Check: $(date) ==="
 
 # Tailscale接続確認
-tailscale status
+tailscale status | grep -q "100.110.222.53" && echo "✅ Tailscale OK" || echo "❌ Tailscale DOWN"
+
+# Docker Container確認
+docker ps | grep -q "mailserver-postfix" && echo "✅ Postfix OK" || echo "❌ Postfix DOWN"
+
+# SMTP Port確認
+nc -zv localhost 25 && echo "✅ SMTP Port OK" || echo "❌ SMTP Port CLOSED"
+
+# Dell LMTP確認
+nc -zv 100.110.222.53 2525 && echo "✅ Dell LMTP OK" || echo "❌ Dell LMTP DOWN"
+
+# Postfixキュー確認
+QUEUE_COUNT=$(docker exec mailserver-postfix postqueue -p | tail -1 | awk '{print $5}')
+echo "Mail Queue: $QUEUE_COUNT"
+
+# ログローテーション
+docker logs mailserver-postfix --tail 100 > /var/log/postfix-daily-$(date +%Y%m%d).log
 ```
 
-### 9.5 DNSレコード確認
+#### 毎週のタスク
 
 ```bash
-# MXレコード確認
-dig MX kuma8088.com
+# セキュリティアップデート
+sudo dnf update -y --security
 
-# SPFレコード確認（SendGrid）
-dig TXT kuma8088.com | grep sendgrid
+# Dockerイメージ更新
+cd /opt/mailserver
+docker-compose pull
+docker-compose up -d
 
-# DKIMレコード確認（SendGrid）
-dig CNAME s1._domainkey.kuma8088.com
+# システム再起動 (必要に応じて)
+sudo reboot
+```
 
-# DMARCレコード確認
-dig TXT _dmarc.kuma8088.com
+### 6.3 トラブルシューティング
+
+#### 問題 #1: メール受信失敗
+
+**症状**: 外部からメールが届かない
+
+**確認手順**:
+```bash
+# 1. SMTP Port開放確認
+nc -zv 43.207.242.167 25
+
+# 2. Security Group確認
+aws ec2 describe-security-groups \
+  --group-ids $(terraform output -raw security_group_id) \
+  --query 'SecurityGroups[0].IpPermissions[?FromPort==`25`]'
+
+# 3. Postfixログ確認
+docker logs mailserver-postfix --tail 50
+
+# 4. DNS MXレコード確認
+dig +short kuma8088.com MX
+dig +short mx.kuma8088.com A
+```
+
+#### 問題 #2: Tailscale接続失敗
+
+**症状**: Dell WorkStationへの接続不可
+
+**確認手順**:
+```bash
+# 1. Tailscale状態確認
+tailscale status
+
+# 2. Tailscale再接続
+sudo tailscale down
+sudo tailscale up --accept-routes
+
+# 3. Dell側確認 (Dell WorkStationで実行)
+tailscale status
+tailscale ping <EC2 Tailscale IP>
+
+# 4. ルーティング確認
+ip route | grep tailscale
+```
+
+#### 問題 #3: メールリレー失敗
+
+**症状**: EC2でメール受信するが、Dellへリレーされない
+
+**確認手順**:
+```bash
+# 1. Dell LMTP接続確認
+nc -zv 100.110.222.53 2525
+
+# 2. Postfixログ確認
+docker logs mailserver-postfix --tail 50 | grep "relay="
+
+# 3. Postfixキュー確認
+docker exec mailserver-postfix postqueue -p
+
+# 4. RELAYHOST設定確認
+docker exec mailserver-postfix postconf relayhost
+# 期待される出力: relayhost = [100.110.222.53]:2525
 ```
 
 ---
 
-## 10. 次のステップ
+## 7. 移行計画
 
-構築が完了したら、以下を実施してください：
+### 7.1 移行ステップ
 
-1. **テスト手順書実行**: `Docs/application/mailserver/05_testing.md`
-2. **監視設定**: CloudWatch Alarms、SNS通知の動作確認
-3. **セキュリティ強化**: IAMポリシーの最小権限化、Secrets Managerローテーション設定
-4. **ドキュメント更新**: 実際の設定値（ARN、DNS名等）をドキュメントに反映
+#### Phase 1: EC2環境構築 (本ドキュメント)
+- ✅ Terraform設定作成
+- ✅ User Data Script作成
+- ⏳ Terraformデプロイ
+- ⏳ 動作確認・テスト
+
+#### Phase 2: 並行運用 (1週間)
+- EC2環境: テストメール受信
+- Fargate環境: 本番メール受信
+- 問題がないことを確認
+
+#### Phase 3: 段階的移行
+- MXレコード TTL短縮 (60秒)
+- テストドメインをEC2に向ける
+- 本番ドメインをEC2に向ける
+
+#### Phase 4: Fargate停止
+- EC2環境で安定稼働確認
+- Fargateサービス停止
+- Fargateリソース削除
+
+### 7.2 ロールバック計画
+
+**条件**: EC2環境で致命的な問題が発生した場合
+
+**手順**:
+```bash
+# 1. MXレコードをFargateに戻す (DNS更新)
+# 2. EC2インスタンス停止
+terraform destroy -target=aws_instance.mailserver_mx
+# 3. Fargateサービス再開 (既に稼働中の場合は不要)
+```
 
 ---
 
-## 11. 承認
+## 8. コスト試算
 
-| 役割 | 氏名 | 承認日 | 署名 |
-|------|------|--------|------|
-| 作成者 | Claude | 2025-11-02 | ✓ |
-| レビュアー |  |  |  |
-| 実施者 |  |  |  |
+### 8.1 月額コスト
+
+| 項目 | 詳細 | 月額 (USD) |
+|------|------|------------|
+| **EC2 Instance** | t4g.nano (ARM64, 0.5 GiB) | $3.07 |
+| **EBS Volume** | 8 GiB gp3 | $0.80 |
+| **Elastic IP** | 割り当て済み (課金なし) | $0.00 |
+| **Data Transfer** | ~1 GB/月 (メール送受信) | $0.09 |
+| **CloudWatch Logs** | ~500 MB/月 | $0.25 |
+| **CloudWatch Metrics** | カスタムメトリクス 2個 | $0.60 |
+| **合計** | | **$4.81** |
+
+### 8.2 コスト比較
+
+| 項目 | Fargate (v5.1) | EC2 (v6.0) | 削減額 |
+|------|----------------|------------|--------|
+| **月額コスト** | $13-16 | $4.81 | $8-11 |
+| **年間コスト** | $156-192 | $57.72 | $98-134 |
+| **削減率** | - | - | **63-73%** |
 
 ---
 
-## 12. 文書改訂履歴
+## 9. 付録
 
-| バージョン | 日付 | 変更内容 | 作成者 | 参照文書 |
-|-----------|------|----------|--------|----------|
-| 1.0 | 2025-10-31 | 初版作成 | Claude | - |
-| 2.0 | 2025-11-01 | マルチドメイン対応（4ドメイン）、Rspamd/ClamAV統合、Postfix milter設定追加、NTT RX-600KI固定IP対応、Cloudflare DNS管理対応 | Claude | 01_requirements.md v2.1、02_design.md v2.3、03_Firewall(RX-600KI).md v1.1 |
-| 3.0 | 2025-11-01 | **Tailscale VPN対応への全面改訂**: Tailscale VPN設定セクション追加（6章）、SSL証明書取得をTailscale HTTPSへ変更、Let's Encrypt/Certbot手順削除、ポート転送設定を不要化、MagicDNS対応、Nginx設定をTailscale証明書パスへ更新、DNS設定を外部SMTPリレー前提へ簡素化、動作確認手順をTailscaleクライアント経由へ変更 | Claude | 01_requirements.md v3.0、02_design.md v3.1、03_Firewall(RX-600KI).md v2.1 |
-| 3.1 | 2025-11-02 | Tailnet個人運用向けに手順整合（外部SMTP/DNS関連を任意扱いへ整理、Tailscale証明書マウント先と設定を統一、誤記修正、バックアップ・自動化・トラブルシュートを最新構成に更新） | Codex | 01_requirements.md v3.0、02_design.md v3.1、03_Firewall(RX-600KI).md v2.1 |
-| 5.0 | 2025-11-02 | **ハイブリッドクラウド構成への全面改訂**: AWS Fargate MX Gateway追加（3章）、SendGrid SMTP Relay統合（4章）、Tailscale VPN Fargate/Dell間接続（5章）、Dell側LMTP受信/Send専用Postfix設定（6章）、統合テスト手順追加（7章）、CloudWatch監視設定追加（8.4章）、MXレコードをALB DNS名へ変更、SendGrid SPF/DKIM/DMARC認証設定追加 | Claude | 01_requirements.md v5.0、02_design.md v5.0、03_Firewall(RX-600KI).md v2.1 |
-| 5.1 | 2025-11-02 | **Public IP Fargate構成への簡素化**: ALBをオプション化、Public IP直接受信構成へ変更（3.3章）、Elastic IP割り当てセクション追加（3.5章）、ECS Service作成をALB不使用に更新（7.2章）、DNS設定をPublic IP/Elastic IP対応に変更（7.3章）、CloudWatch AlarmsからALB依存を削除（8.4章）、トラブルシューティングをPublic IP構成に更新（9.2章）、コスト最適化（ALB月額$16.20削減） | Claude | 01_requirements.md v5.0、02_design.md v5.0、03_Firewall(RX-600KI).md v2.1 |
-| 5.2 | 2025-11-02 | **品質改善（エキスパートレビュー対応）**: 環境変数検証スクリプト追加（3.1章）、Terraform Apply失敗時復旧手順追加（Given/When/Thenシナリオ形式、3.1章）、MXレコード設定タイミング明記と依存関係図追加（7.3章）、CloudWatch Logs運用要件追加（8.5章）、Infrastructure Drift検出スクリプト追加（8.4章）、Elastic IP関連付けエラー復旧手順追加（トラブルシューティング）、AWS CLI認証確認の前提条件追加（3.1章）、セクション番号調整（8.4→8.6） | Claude | エキスパートパネルレビュー（Wiegers/Adzic/Fowler/Nygard/Hightower）|
+### 9.1 関連ドキュメント
 
-**v5.0 主要変更点**:
-- **AWS環境構築**: 新規セクション追加（3章）
-  - VPC/サブネット/セキュリティグループ作成
-  - Application Load Balancer (ALB) 設定
-  - ECS Fargate Cluster/Task Definition/Service作成
-  - AWS Secrets Manager (Tailscale Auth Key保存)
-  - IAM Role (Execution Role/Task Role) 作成
-  - CloudWatch Logs設定
-- **SendGrid統合**: 新規セクション追加（4章）
-  - SendGridアカウント作成/API Key生成
-  - ドメイン認証（SPF/DKIM/DMARC）
-  - Secrets Manager統合
-- **Tailscale VPN拡張**: Fargate対応（5章）
-  - Fargate用Ephemeral Auth Key生成
-  - Tailscale ACL設定（tag:fargate-mx）
-  - Dell側Tailscale接続設定
-- **Dell側構成変更**: LMTP受信 + SendGrid送信専用（6章）
-  - Dovecot LMTP listener (Port 2525)
-  - Postfix SendGrid Relay設定
-  - Docker Compose Port mapping更新
-- **統合テスト**: 新規セクション追加（7章）
-  - Fargate → Dell LMTP転送テスト
-  - Dell → SendGrid送信テスト
-  - MXレコードDNS設定
-- **監視強化**: CloudWatch Alarms追加（8.4章）
-  - FargateTaskUnhealthy/FargateHighCPU/FargateHighMemory
-  - SNS通知設定
-- **DNS設定変更**: MXレコードをALB DNS名に変更
-  - SPF/DKIM/DMARCをSendGrid提供値に変更
-  - Aレコード/PTRレコード設定削除（Fargate Elastic IP不使用）
+- **Fargate構成**: `Docs/application/mailserver/04_installation.md`
+- **トラブルシューティング**: `services/mailserver/troubleshoot/INBOUND_MAIL_FAILURE_2025-11-03.md`
+- **Terraform main**: `services/mailserver/terraform/main.tf`
+- **Docker Compose (Dell)**: `services/mailserver/docker-compose.yml`
 
-**v5.1 主要変更点**:
-- **ALBオプション化**: Application Load Balancer を将来の拡張オプションとして位置づけ（3.3章アーキテクチャ図更新）
-- **Public IP Fargate構成**: シンプルなPublic IP直接受信構成に変更（当面の運用方針）
-- **セキュリティグループ簡素化**: ALB SG削除、Fargate SGのみでPort 25を0.0.0.0/0から許可（3.3章）
-- **Elastic IP対応**: オプションで固定IP割り当て可能（3.5章新規追加、月額$3.60）
-- **ECS Service更新**: ALB/Target Group参照を削除、Public IP直接割り当て構成へ変更（7.2章）
-- **DNS設定更新**: MXレコードをPublic IP/Elastic IPに変更、Aレコード設定追加（7.3章）
-- **監視最適化**: FargateTaskUnhealthy アラームを FargateTaskStopped に変更（ALB依存削除、8.4章）
-- **トラブルシューティング強化**: Public IP疎通確認、DNS設定確認セクション追加（9.2章）
-- **コスト最適化**: ALB月額$16.20削減、Elastic IP使用時は+$3.60/月
+### 9.2 参考リソース
 
-**v5.2 主要変更点**（品質改善 - エキスパートレビュー対応）:
-- **検証スクリプト追加**: 環境変数フォーマット自動検証（3.1章）
-  - VPC ID/Subnet ID/Security Group ID/Elastic IP/IAM Role ARN の正規表現検証
-  - セクション7.3（DNS設定）へのElastic IP値引き継ぎを確実化
-- **復旧手順体系化**: Terraform Apply失敗時の4シナリオ対応（3.1章）
-  - シナリオ1: 正常適用（Given/When/Then形式で成功検証基準明記）
-  - シナリオ2: 部分作成済み（差分再適用手順）
-  - シナリオ3: State破損（terraform import による復旧）
-  - シナリオ4: 完全ロールバック（terraform destroy 前チェックリスト追加）
-- **依存関係明確化**: MXレコード設定タイミングと前提条件の可視化（7.3章）
-  - セクション3.1 → 7.2 → 7.3 の依存関係図追加
-  - 環境変数 $ELASTIC_IP の確認手順追加
-- **運用要件追加**: CloudWatch Logs保持期間とアラート設定指針（8.5章新規追加）
-  - Postfixエラーログメトリックフィルタ設定
-  - Tailscale接続エラーメトリックフィルタ設定
-  - 30日保持期間の根拠（コスト最適化）明記
-- **構成ドリフト検出**: Infrastructure Drift検出スクリプト（8.4章新規追加）
-  - Terraform管理リソースの週次検証（terraform plan -detailed-exitcode）
-  - 手動管理リソース存在確認（Secrets Manager、ECS Service）
-  - cron設定による自動化（毎週日曜日 AM 2:00）
-- **エラー復旧強化**: Elastic IP関連付けエラー復旧手順（トラブルシューティング）
-  - 既存関連付け解除手順追加
-  - 再関連付けコマンド明記
-- **前提条件強化**: AWS CLI認証確認を terraform init 前に明示（3.1章）
-  - aws sts get-caller-identity による認証確認
-  - 失敗時のエラーメッセージ表示
+- **Tailscale Documentation**: https://tailscale.com/kb/
+- **Amazon Linux 2023 User Guide**: https://docs.aws.amazon.com/linux/al2023/
+- **boky/postfix Docker Hub**: https://hub.docker.com/r/boky/postfix
+- **Docker Compose Documentation**: https://docs.docker.com/compose/
+
+### 9.3 変更履歴
+
+| 日付 | バージョン | 変更内容 |
+|------|------------|----------|
+| 2025-11-04 | v6.0 Draft | 初版作成 (EC2構成設計) |
+
+---
+
+## 10. 実装トラブルシューティング履歴
+
+### 10.1 初回デプロイ問題 (2025-11-04)
+
+#### 問題 #1: AMIアーキテクチャミスマッチ
+
+**症状**:
+```
+Error: creating EC2 Instance: operation error EC2: RunInstances
+api error InvalidParameterValue: The architecture 'arm64' of the specified
+instance type does not match the architecture 'x86_64' of the specified AMI.
+```
+
+**原因**:
+- 使用したAMI `ami-0d52744d6551d851e` がx86_64アーキテクチャ
+- インスタンスタイプ `t4g.nano` はARM64 (Graviton)
+
+**解決**:
+```hcl
+# main.tf line 434
+resource "aws_instance" "mailserver_mx" {
+  ami           = "ami-0ad4e047a362f26b8"  # Amazon Linux 2023 ARM64に変更
+  instance_type = "t4g.nano"
+  # ...
+}
+```
+
+**教訓**: Gravitonインスタンス (t4g系) は必ずARM64 AMIを使用すること
+
+---
+
+#### 問題 #2: Docker Compose未インストール
+
+**症状**:
+```
+[user_data.sh]: unknown shorthand flag: 'd' in -d
+[user_data.sh]: See 'docker --help'.
+```
+
+**原因**:
+- Amazon Linux 2023のDockerパッケージにはdocker-composeが含まれていない
+- `docker compose up -d` コマンドが実行できない
+
+**解決**:
+
+user_data.sh にDocker Compose v2インストールを追加:
+
+```bash
+# Docker Compose インストール (user_data.sh lines 30-35)
+log "Installing Docker Compose"
+DOCKER_COMPOSE_VERSION="v2.24.0"
+curl -SL "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-aarch64" \
+  -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+```
+
+コマンド構文も修正:
+```bash
+# 修正前
+docker compose up -d
+
+# 修正後
+docker-compose up -d
+```
+
+**教訓**: Amazon Linux 2023ではDocker Composeを手動インストールする必要がある
+
+---
+
+#### 問題 #3: Tailscale Auth Key 無効化
+
+**症状**:
+```
+backend error: invalid key: API key kd1VosWS4g11CNTRL not valid
+```
+
+**原因**:
+- 前回のEC2インスタンス (i-018511fba55b0881e) で既に使用済み
+- Tailscale auth keyは一度しか使用できない（**reusable設定がfalse**の場合）
+
+**誤診断の経緯**:
+1. 初回インスタンスでDocker Compose問題により、user_data.shがTailscale接続まで到達せず
+2. Auth keyが**使われていない**と誤認
+3. 実際には、`tailscale up --authkey` コマンドは実行されており、keyは消費済みだった
+
+**解決**:
+
+新しいreusable auth keyを生成してSecrets Managerに登録:
+
+```bash
+# Tailscale管理画面で新しいauth keyを生成
+# 設定:
+# - Reusable: ☑️ チェック (再利用可能)
+# - Tags: tag:fargate-mx
+# - Pre-approved: ☑️ チェック
+
+# Secrets Manager更新
+aws secretsmanager put-secret-value \
+  --secret-id mailserver/tailscale/ec2-auth-key \
+  --secret-string "tskey-auth-kJSTzBehBa11CNTRL-3AkWfjiji14F8hi1brck24BRh8iuXEyT"
+```
+
+EC2インスタンス再作成:
+```bash
+terraform taint aws_instance.mailserver_mx
+terraform apply -auto-approve
+```
+
+**教訓**:
+- Tailscale auth keyは**reusable設定**を必ず有効化すること
+- EC2再作成が必要な環境では、one-time keyは使用不可
+- `tailscale up` コマンドが実行された時点でkeyは消費される（成功/失敗に関わらず）
+
+---
+
+#### 問題 #4: Tailscale ACL タグ大文字小文字不一致
+
+**症状**:
+```bash
+# EC2インスタンスは起動しているが、外部からSMTP接続できない
+nc -zv 43.207.242.167 25
+# Connection timed out
+
+# Tailscale経由のSSHも接続できない
+ssh ec2-user@100.70.131.116
+# Connection timed out
+
+# EC2ログにはSMTPトラフィックが一切記録されない
+aws logs tail /ec2/mailserver-mx --since 30m
+# MARK メッセージのみ、接続ログなし
+```
+
+**原因**:
+- EC2インスタンスのTailscaleタグ: **`tag:frontec2`** (小文字)
+- Tailscale ACLのgrantsルール: **`tag:FrontEC2`** (大文字混じり)
+- **Tailscaleのタグは大文字小文字を区別する**ため、ACLルールがマッチせず全トラフィックがブロックされる
+
+**詳細調査**:
+
+1. **EC2インスタンスタグ確認**:
+```bash
+# Dell WorkStationから確認
+tailscale status | grep mailserver-mx-ec2
+
+# 出力:
+# 100.70.131.116  mailserver-mx-ec2  tagged-devices  linux  idle
+#   Tags: ["tag:frontec2"]  ← 小文字
+```
+
+2. **Tailscale ACL設定** (抜粋):
+```json
+{
+    "grants": [
+        {
+            "src": ["tag:fargate-mx", "naoya.iimura@gmail.com", "tag:FrontEC2"],
+            "dst": ["tag:mailserver"],
+            "ip":  ["tcp:25", "tcp:2525", "udp:41641"],
+        }
+    ],
+    "tagOwners": {
+        "tag:FrontEC2": ["autogroup:admin"],
+    }
+}
+```
+
+3. **接続失敗の証拠**:
+```bash
+# 外部からSMTP接続テスト
+nc -zv 43.207.242.167 25
+# nc: connect to 43.207.242.167 port 25 (tcp) timed out
+
+# Tailscale経由でSMTP接続テスト
+nc -zv 100.70.131.116 25
+# nc: connect to 100.70.131.116 port 25 (tcp) timed out
+
+# Tailscale経由でSSH接続テスト
+ssh ec2-user@100.70.131.116
+# ssh: connect to host 100.70.131.116 port 22: Connection timed out
+```
+
+**解決方法**:
+
+**Option A: Tailscale ACLに小文字タグを追加** (推奨)
+
+Tailscale管理画面 (https://login.tailscale.com/admin/acls) で以下のように修正:
+
+```json
+{
+    "grants": [
+        {
+            "src": [
+                "tag:fargate-mx",
+                "naoya.iimura@gmail.com",
+                "tag:FrontEC2",
+                "tag:frontec2"  // ← 小文字タグを追加
+            ],
+            "dst": ["tag:mailserver"],
+            "ip":  ["tcp:25", "tcp:2525", "udp:41641"],
+        }
+    ],
+    "tagOwners": {
+        "tag:FrontEC2": ["autogroup:admin"],
+        "tag:frontec2": ["autogroup:admin"],  // ← tagOwners にも追加
+    }
+}
+```
+
+**Option B: EC2インスタンスのタグを大文字に変更**
+
+Tailscale管理画面でEC2デバイスのタグを `tag:frontec2` → `tag:FrontEC2` に変更
+
+**検証手順**:
+
+ACL修正後、以下を確認:
+
+```bash
+# 1. ACL伝播待機 (通常は即座)
+sleep 10
+
+# 2. Tailscale経由でSSH接続テスト
+ssh ec2-user@100.70.131.116 "whoami"
+# 期待される出力: ec2-user
+
+# 3. Tailscale経由でSMTP接続テスト
+nc -zv 100.70.131.116 25
+# 期待される出力: Ncat: Connected to 100.70.131.116:25.
+
+# 4. 外部からSMTP接続テスト
+nc -zv 43.207.242.167 25
+# 期待される出力: Ncat: Connected to 43.207.242.167:25.
+
+# 5. テストメール送信
+(echo "EHLO test.example.com"; sleep 1; \
+ echo "MAIL FROM:<test@example.com>"; sleep 1; \
+ echo "RCPT TO:<test@kuma8088.com>"; sleep 1; \
+ echo "DATA"; sleep 1; \
+ echo "Subject: ACL Test"; echo ""; echo "Test body"; echo "."; sleep 1; \
+ echo "QUIT") | nc 43.207.242.167 25
+
+# 6. EC2ログでSMTPトラフィック確認
+aws logs tail /ec2/mailserver-mx --since 5m --format short | grep "connect from"
+# 期待される出力: connect from <送信元ホスト>
+```
+
+**教訓**:
+- **Tailscaleのタグは大文字小文字を厳密に区別する**
+- ACL設定時は、実際のデバイスタグとgratsルールのタグが**完全一致**することを確認
+- デプロイ後は必ず接続テストを実施し、ACLが正しく適用されているか検証すること
+- `tailscale status` で表示されるTagsフィールドを常に確認
+
+---
+
+### 10.2 デプロイ成功確認手順
+
+#### ステップ1: 新しいインスタンス情報確認
+
+```bash
+terraform output
+
+# 期待される出力:
+# ec2_instance_id = "i-029e28809c430c815"
+# ec2_instance_public_ip = "43.207.242.167"
+# ec2_instance_private_ip = "10.0.1.158"
+```
+
+#### ステップ2: user_data.sh実行完了待機 (180秒)
+
+```bash
+echo "⏳ Waiting for user_data.sh to execute (180 seconds)..."
+sleep 180
+```
+
+#### ステップ3: CloudWatch Logs確認
+
+```bash
+# User Data実行ログ確認
+aws logs tail /ec2/mailserver-mx --since 10m --format short
+
+# 期待されるログ:
+# [timestamp] Installing Docker Compose
+# [timestamp] Starting Tailscale service
+# [timestamp] Connecting to Tailscale VPN
+# [timestamp] Starting Postfix container
+# [timestamp] Postfix container started successfully
+# [timestamp] EC2 MX Gateway setup completed successfully
+```
+
+#### ステップ4: EC2コンソール出力確認
+
+```bash
+aws ec2 get-console-output \
+  --instance-id i-029e28809c430c815 \
+  --latest \
+  --query 'Output' \
+  --output text | tail -50
+```
+
+#### ステップ5: Tailscale接続確認
+
+```bash
+# Dell WorkStationから確認
+tailscale status | grep mailserver-mx-ec2
+
+# 期待される出力:
+# 100.xxx.xxx.xxx  mailserver-mx-ec2  tagged-devices  linux  idle, tx xxx rx xxx
+```
+
+#### ステップ6: SMTP受信テスト
+
+```bash
+# 外部からSMTP接続テスト
+nc -zv 43.207.242.167 25
+
+# 期待される出力:
+# Ncat: Connected to 43.207.242.167:25.
+```
+
+---
+
+### 10.3 よくある問題と解決策
+
+#### Q1: user_data.sh実行完了の確認方法は？
+
+**A**: CloudWatch LogsまたはEC2コンソール出力で以下のメッセージを確認:
+
+```
+EC2 MX Gateway setup completed successfully
+Timestamp: [日時]
+```
+
+#### Q2: Tailscale接続が確立されない
+
+**A**: 以下を順に確認:
+
+1. Auth keyの有効性確認:
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id mailserver/tailscale/ec2-auth-key \
+  --query SecretString --output text
+```
+
+2. Tailscale管理画面でauth keyステータス確認
+   - https://login.tailscale.com/admin/settings/keys
+   - **Used** または **Expired** の場合は新しいkeyを生成
+
+3. EC2インスタンスからTailscale再接続:
+```bash
+ssh ec2-user@43.207.242.167
+sudo tailscale down
+sudo tailscale up --authkey="新しいauth key" --accept-routes --hostname="mailserver-mx-ec2"
+```
+
+#### Q3: Docker Composeコマンドが見つからない
+
+**A**: user_data.sh内のインストールステップを確認:
+
+```bash
+# EC2にSSH接続
+ssh ec2-user@43.207.242.167
+
+# Docker Composeバージョン確認
+docker-compose --version
+
+# インストールされていない場合は手動インストール:
+sudo curl -SL "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-aarch64" \
+  -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+sudo ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+```
+
+#### Q4: Postfixコンテナが起動しない
+
+**A**: コンテナログで原因を確認:
+
+```bash
+ssh ec2-user@43.207.242.167
+docker logs mailserver-postfix
+
+# よくあるエラー:
+# - Tailscale VPNが接続されていない → Q2参照
+# - 環境変数設定ミス → docker-compose.ymlを確認
+# - ポート25が既に使用中 → `ss -tuln | grep :25` で確認
+```
+
+#### Q5: メールがDellにリレーされない
+
+**A**: 接続性を段階的に確認:
+
+```bash
+# 1. Tailscale VPN接続確認
+tailscale status | grep dell-workstation
+
+# 2. Dell LMTP接続確認
+nc -zv 100.110.222.53 2525
+
+# 3. Postfixログでリレー状況確認
+docker logs mailserver-postfix | grep "relay="
+
+# 4. Postfixキュー確認
+docker exec mailserver-postfix postqueue -p
+```
+
+---
+
+### 10.4 緊急時ロールバック手順
+
+**条件**: EC2環境で致命的な問題が発生し、即座にサービス復旧が必要な場合
+
+**手順**:
+
+```bash
+# 1. MXレコードをFargate環境に戻す (DNS管理画面で手動変更)
+# mx.kuma8088.com A レコード:
+# 変更前: 43.207.242.167 (EC2 Elastic IP)
+# 変更後: [Fargate Public IP] (aws ecs describe-tasks で取得)
+
+# 2. Fargateタスク起動確認
+aws ecs list-tasks --cluster mailserver-cluster --service-name mailserver-mx-service
+
+# タスクが起動していない場合:
+aws ecs update-service \
+  --cluster mailserver-cluster \
+  --service mailserver-mx-service \
+  --desired-count 1
+
+# 3. EC2インスタンス停止 (課金停止)
+terraform destroy -target=aws_instance.mailserver_mx -target=aws_eip_association.mailserver_eip_ec2
+
+# 4. サービス復旧確認
+nc -zv [Fargate Public IP] 25
+```
+
+**ロールバック所要時間**: 約5-10分
+**影響**: DNS TTL分のメール受信遅延 (最大60秒)
+
+---
+
+## 11. EC2内部診断チェックリスト
+
+**目的**: SSH接続後、EC2インスタンス内部で確認すべき全項目を体系的にチェックする
+
+### 11.1 前提条件
+
+```bash
+# SSH接続 (Public IP経由)
+ssh -i ~/.ssh/your-key.pem ec2-user@43.207.242.167
+
+# または Tailscale VPN経由
+ssh -i ~/.ssh/your-key.pem ec2-user@100.70.131.116
+
+# rootユーザーに切り替え (必要に応じて)
+sudo su -
+```
+
+---
+
+### 11.2 システム基本情報確認
+
+#### 11.2.1 OS情報・カーネルバージョン
+
+```bash
+# OS バージョン確認
+cat /etc/os-release
+# 期待される出力:
+# NAME="Amazon Linux"
+# VERSION="2023"
+# ID="amzn"
+# PLATFORM_ID="platform:al2023"
+
+# カーネルバージョン確認
+uname -a
+# 期待される出力: Linux ... 5.x.x-xxx.amzn2023.aarch64 #1 SMP ... aarch64 GNU/Linux
+
+# アーキテクチャ確認
+lscpu | grep -E "Architecture|CPU op-mode"
+# 期待される出力:
+# Architecture:            aarch64
+# CPU op-mode(s):          32-bit, 64-bit
+```
+
+#### 11.2.2 システムアップタイム・ロードアベレージ
+
+```bash
+# システムアップタイム確認
+uptime
+# 期待される出力: up X days, Y hours, load average: 0.XX, 0.XX, 0.XX
+
+# より詳細な起動時刻確認
+who -b
+# 期待される出力: system boot YYYY-MM-DD HH:MM
+```
+
+#### 11.2.3 システムサービス状態
+
+```bash
+# 重要なサービスの状態確認
+systemctl status docker
+systemctl status tailscaled
+systemctl status amazon-cloudwatch-agent
+
+# 全サービスの起動失敗確認
+systemctl --failed
+# 期待される出力: 0 loaded units listed. (起動失敗なし)
+```
+
+---
+
+### 11.3 ネットワーク構成確認
+
+#### 11.3.1 ネットワークインターフェース
+
+```bash
+# インターフェース一覧
+ip addr show
+# 期待される出力:
+# 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN
+#    inet 127.0.0.1/8 scope host lo
+# 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc mq state UP
+#    inet 10.0.1.XXX/24 brd 10.0.1.255 scope global dynamic eth0
+# 3: tailscale0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1280 qdisc fq_codel state UNKNOWN
+#    inet 100.XXX.XXX.XXX/32 scope global tailscale0
+
+# インターフェースのトラフィック統計
+ip -s link show
+# 期待される出力: RX/TX パケット数、エラー数、ドロップ数
+```
+
+#### 11.3.2 ルーティングテーブル
+
+```bash
+# IPv4 ルーティングテーブル
+ip route show
+# 期待される出力:
+# default via 10.0.1.1 dev eth0
+# 10.0.1.0/24 dev eth0 proto kernel scope link src 10.0.1.XXX
+# 100.64.0.0/10 dev tailscale0  ← Tailscale VPN ルート
+# 100.100.100.100 dev tailscale0  ← Tailscale DERP relay
+
+# Tailscale専用ルート確認
+ip route show dev tailscale0
+# 期待される出力: 100.64.0.0/10, DERP relay routes
+```
+
+#### 11.3.3 DNS解決確認
+
+```bash
+# DNS設定確認
+cat /etc/resolv.conf
+# 期待される出力:
+# nameserver 10.0.0.2  (VPC DNS)
+# nameserver 100.100.100.100  (Tailscale MagicDNS)
+
+# DNS解決テスト (外部)
+dig +short google.com
+# 期待される出力: IP addresses
+
+# DNS解決テスト (Tailscale MagicDNS)
+dig +short dell-workstation.tail67811d.ts.net
+# 期待される出力: 100.110.222.53
+```
+
+#### 11.3.4 ファイアウォール設定
+
+```bash
+# firewalld 状態確認 (Amazon Linux 2023ではデフォルト無効)
+systemctl status firewalld
+# 期待される出力: Unit firewalld.service could not be found.
+
+# iptables ルール確認
+sudo iptables -L -n -v
+# 期待される出力:
+# Chain INPUT (policy ACCEPT XX packets, XX bytes)
+# Chain FORWARD (policy ACCEPT XX packets, XX bytes)
+# Chain OUTPUT (policy ACCEPT XX packets, XX bytes)
+
+# Tailscale関連のiptablesルール確認
+sudo iptables -t nat -L -n -v | grep -A 10 "ts-"
+# 期待される出力: Tailscale NAT rules
+
+# Security Group設定確認 (AWS CLI)
+INSTANCE_ID=$(ec2-metadata --instance-id | cut -d " " -f 2)
+aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].SecurityGroups' \
+  --output table
+# 期待される出力: Security Group ID と Name
+```
+
+---
+
+### 11.4 Docker環境確認
+
+#### 11.4.1 Docker Daemon状態
+
+```bash
+# Docker サービス状態
+systemctl status docker
+# 期待される出力: active (running)
+
+# Docker バージョン
+docker --version
+# 期待される出力: Docker version 20.x.x, build xxxxx
+
+# Docker システム情報
+docker system info
+# 期待される出力:
+# Server Version: 20.x.x
+# Storage Driver: overlay2
+# Logging Driver: json-file
+# Cgroup Driver: systemd
+# Total Memory: ~512 MiB (t4g.nano)
+```
+
+#### 11.4.2 Docker Compose確認
+
+```bash
+# Docker Compose バージョン
+docker-compose --version
+# 期待される出力: Docker Compose version v2.24.0
+
+# docker-compose.yml 配置確認
+ls -la /opt/mailserver/docker-compose.yml
+# 期待される出力: -rw-r--r-- 1 root root XXXX ... docker-compose.yml
+
+# docker-compose.yml 内容確認
+cat /opt/mailserver/docker-compose.yml
+# 期待される出力: Postfix service definition
+```
+
+#### 11.4.3 コンテナ状態
+
+```bash
+# 実行中のコンテナ一覧
+docker ps
+# 期待される出力:
+# CONTAINER ID   IMAGE                 STATUS         PORTS     NAMES
+# xxxxx          boky/postfix:latest   Up XX minutes  (empty)   mailserver-postfix
+
+# 全コンテナ (停止含む)
+docker ps -a
+# 期待される出力: mailserver-postfix のみ
+
+# コンテナ詳細情報
+docker inspect mailserver-postfix --format='{{json .State}}' | jq
+# 期待される出力:
+# {
+#   "Status": "running",
+#   "Running": true,
+#   "Paused": false,
+#   "Restarting": false,
+#   "Health": {
+#     "Status": "healthy",
+#     "FailingStreak": 0
+#   }
+# }
+
+# コンテナリソース使用状況
+docker stats --no-stream mailserver-postfix
+# 期待される出力: CPU%, MEM USAGE / LIMIT, NET I/O, BLOCK I/O
+```
+
+#### 11.4.4 Docker ネットワーク
+
+```bash
+# ネットワーク一覧
+docker network ls
+# 期待される出力:
+# NETWORK ID   NAME      DRIVER    SCOPE
+# xxxx         bridge    bridge    local
+# xxxx         host      host      local  ← Postfixが使用
+# xxxx         none      null      local
+
+# Postfixコンテナのネットワーク設定確認
+docker inspect mailserver-postfix --format='{{.HostConfig.NetworkMode}}'
+# 期待される出力: host
+```
+
+#### 11.4.5 Docker ログドライバー
+
+```bash
+# Postfixログドライバー設定確認
+docker inspect mailserver-postfix --format='{{.HostConfig.LogConfig.Type}}'
+# 期待される出力: awslogs
+
+# ログドライバー設定詳細
+docker inspect mailserver-postfix --format='{{json .HostConfig.LogConfig}}' | jq
+# 期待される出力:
+# {
+#   "Type": "awslogs",
+#   "Config": {
+#     "awslogs-group": "/ec2/mailserver-mx",
+#     "awslogs-region": "ap-northeast-1",
+#     "awslogs-stream": "postfix"
+#   }
+# }
+```
+
+---
+
+### 11.5 Postfix構成確認
+
+#### 11.5.1 Postfix環境変数
+
+```bash
+# コンテナ内環境変数確認
+docker exec mailserver-postfix env | grep -E "ALLOW_EMPTY|RELAYHOST|POSTFIX_"
+# 期待される出力:
+# ALLOW_EMPTY_SENDER_DOMAINS=true
+# ALLOWED_SENDER_DOMAINS=
+# RELAYHOST=[100.110.222.53]:2525
+# POSTFIX_inet_protocols=ipv4
+# POSTFIX_relay_domains=kuma8088.com, m8088.com
+# POSTFIX_smtpd_recipient_restrictions=...
+# ...
+```
+
+#### 11.5.2 Postfix設定値確認
+
+```bash
+# RELAYHOSTの実際の設定値
+docker exec mailserver-postfix postconf relayhost
+# 期待される出力: relayhost = [100.110.222.53]:2525
+
+# relay_domainsの実際の設定値
+docker exec mailserver-postfix postconf relay_domains
+# 期待される出力: relay_domains = kuma8088.com, m8088.com
+
+# inet_protocols設定確認 (IPv4のみか確認)
+docker exec mailserver-postfix postconf inet_protocols
+# 期待される出力: inet_protocols = ipv4
+
+# smtpd_recipient_restrictionsの確認
+docker exec mailserver-postfix postconf smtpd_recipient_restrictions
+# 期待される出力: smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, check_relay_domains, permit
+
+# myhostname設定確認
+docker exec mailserver-postfix postconf myhostname
+# 期待される出力: myhostname = mx.kuma8088.com
+```
+
+#### 11.5.3 Postfixキュー状況
+
+```bash
+# メールキュー確認
+docker exec mailserver-postfix postqueue -p
+# 期待される出力:
+# Mail queue is empty (正常時)
+# または
+# (キューにメールがある場合はメール一覧)
+
+# キューサマリー
+docker exec mailserver-postfix postqueue -p | tail -1
+# 期待される出力: -- 0 Kbytes in 0 Requests. (キュー空の場合)
+
+# 配信待ちメールの詳細確認 (キューにメールがある場合)
+docker exec mailserver-postfix postcat -vq <queue_id>
+```
+
+#### 11.5.4 Postfixプロセス確認
+
+```bash
+# Postfixマスタープロセス確認
+docker exec mailserver-postfix ps aux | grep -E "master|pickup|qmgr|smtpd"
+# 期待される出力:
+# root     1  ... /bin/sh -c /docker-init.sh && postfix start-fg
+# postfix  XX ... pickup -l -t unix -u
+# postfix  XX ... qmgr -l -t unix -u
+# postfix  XX ... smtpd -n smtp -t inet -u -c ...
+```
+
+---
+
+### 11.6 Tailscale VPN状態確認
+
+#### 11.6.1 Tailscale サービス状態
+
+```bash
+# Tailscaleサービス状態
+systemctl status tailscaled
+# 期待される出力: active (running)
+
+# Tailscale接続状態
+tailscale status
+# 期待される出力:
+# 100.110.222.53  dell-workstation  tagged-devices  linux  active; direct 192.168.x.x:xxxxx, tx XXX rx XXX
+# 100.XXX.XXX.XXX mailserver-mx-ec2 tagged-devices  linux  -
+
+# Tailscale詳細情報
+tailscale status --json | jq '.Self'
+# 期待される出力:
+# {
+#   "ID": "...",
+#   "HostName": "mailserver-mx-ec2",
+#   "DNSName": "mailserver-mx-ec2.tail67811d.ts.net.",
+#   "OS": "linux",
+#   "TailscaleIPs": ["100.XXX.XXX.XXX"],
+#   "Tags": ["tag:frontec2"]
+# }
+```
+
+#### 11.6.2 Tailscale タグ確認
+
+```bash
+# デバイスに割り当てられているタグ確認
+tailscale status --json | jq '.Self.Tags'
+# 期待される出力: ["tag:frontec2"]
+
+# ピア(Dell)の情報確認
+tailscale status --json | jq '.Peer[] | select(.HostName=="dell-workstation")'
+# 期待される出力: Dell WorkStationのピア情報
+```
+
+#### 11.6.3 Tailscale接続性テスト
+
+```bash
+# Dell WorkStationへのpingテスト (Tailscale経由)
+tailscale ping 100.110.222.53
+# 期待される出力: pong from dell-workstation (100.110.222.53) via DERP in XXms
+
+# Dell WorkStationへのpingテスト (ICMP)
+ping -c 3 100.110.222.53
+# 期待される出力: 3 packets transmitted, 3 received, 0% packet loss
+
+# Dell LMTP ポート接続テスト
+nc -zv 100.110.222.53 2525
+# 期待される出力: Ncat: Connected to 100.110.222.53:2525.
+
+# Dell LMTP ポート接続テスト (timeout付き)
+timeout 5 nc -zv 100.110.222.53 2525 && echo "SUCCESS" || echo "FAILED"
+```
+
+#### 11.6.4 Tailscale ルーティング確認
+
+```bash
+# Tailscale経由のルート確認
+ip route show dev tailscale0
+# 期待される出力:
+# 100.64.0.0/10 dev tailscale0 scope link
+# 100.100.100.100 dev tailscale0 scope link  ← DERP relay
+
+# --accept-routes オプション確認
+tailscale status --json | jq '.Self.AllowedIPs'
+# 期待される出力: Tailscaleから広告されているルート
+```
+
+---
+
+### 11.7 ポート・リスニング状態確認
+
+#### 11.7.1 全リスニングポート確認
+
+```bash
+# TCP/UDP リスニングポート一覧
+ss -tuln
+# 期待される出力:
+# Netid  State   Recv-Q  Send-Q  Local Address:Port   Peer Address:Port
+# tcp    LISTEN  0       100     0.0.0.0:25            0.0.0.0:*       ← Postfix SMTP
+# tcp    LISTEN  0       128     0.0.0.0:22            0.0.0.0:*       ← SSH
+# udp    UNCONN  0       0       0.0.0.0:41641         0.0.0.0:*       ← Tailscale
+
+# より詳細なリスニング情報 (プロセス名表示)
+sudo ss -tulnp
+# 期待される出力: プロセス名とPIDも表示
+```
+
+#### 11.7.2 SMTP ポート確認
+
+```bash
+# ポート25がリスニング中か確認
+ss -tuln | grep :25
+# 期待される出力:
+# tcp   LISTEN  0  100  0.0.0.0:25  0.0.0.0:*
+
+# ポート25のプロセス確認
+sudo lsof -i :25
+# 期待される出力:
+# COMMAND   PID     USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+# master    XXX  postfix   13u  IPv4  XXXX      0t0  TCP *:smtp (LISTEN)
+
+# ローカルからSMTP接続テスト
+nc -zv localhost 25
+# 期待される出力: Ncat: Connected to localhost:25.
+
+# SMTP バナー確認
+echo "QUIT" | nc localhost 25
+# 期待される出力:
+# 220 mx.kuma8088.com ESMTP Postfix
+# 221 2.0.0 Bye
+```
+
+#### 11.7.3 Tailscale ポート確認
+
+```bash
+# Tailscale UDP ポート確認 (通常41641)
+ss -tuln | grep 41641
+# 期待される出力:
+# udp   UNCONN  0  0  0.0.0.0:41641  0.0.0.0:*
+
+# Tailscaleプロセス確認
+sudo lsof -i UDP:41641
+# 期待される出力:
+# COMMAND     PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+# tailscaled  XXX root   XX   IPv4  XXXX      0t0  UDP *:41641
+```
+
+---
+
+### 11.8 ログファイル確認
+
+#### 11.8.1 user_data.sh 実行ログ
+
+```bash
+# user_data.sh実行ログ確認
+cat /var/log/user-data.log
+# 期待される出力:
+# [timestamp] Starting EC2 MX Gateway setup
+# [timestamp] Updating system packages
+# ...
+# [timestamp] EC2 MX Gateway setup completed successfully
+
+# 最後の20行確認 (エラー検出)
+tail -20 /var/log/user-data.log
+
+# エラー行の検索
+grep -i error /var/log/user-data.log
+# 期待される出力: (何も表示されない = エラーなし)
+```
+
+#### 11.8.2 Postfix ログ (Dockerコンテナ)
+
+```bash
+# Postfix最新ログ確認
+docker logs mailserver-postfix --tail 50
+# 期待される出力:
+# postfix/master[X]: daemon started -- version X.X.X
+# ‣ NOTE  Forwarding all emails to [100.110.222.53]:2525 without any authentication.
+
+# リアルタイムログ監視
+docker logs mailserver-postfix -f
+
+# エラーログのみ抽出
+docker logs mailserver-postfix 2>&1 | grep -i -E "error|warning|fatal"
+
+# リレー状況確認
+docker logs mailserver-postfix 2>&1 | grep "relay=" | tail -10
+# 期待される出力: to=<...>, relay=[100.110.222.53]:2525, ...status=sent
+```
+
+#### 11.8.3 システムログ (journalctl)
+
+```bash
+# Docker サービスログ
+journalctl -u docker --since "1 hour ago" --no-pager
+# 期待される出力: Docker daemon起動・コンテナ操作ログ
+
+# Tailscale サービスログ
+journalctl -u tailscaled --since "1 hour ago" --no-pager
+# 期待される出力: Tailscale VPN接続・切断ログ
+
+# CloudWatch Agent ログ
+journalctl -u amazon-cloudwatch-agent --since "1 hour ago" --no-pager
+# 期待される出力: CloudWatch Agentメトリクス送信ログ
+
+# カーネルログ (ネットワーク関連)
+journalctl -k --since "1 hour ago" --no-pager | grep -i -E "eth0|tailscale|network"
+```
+
+#### 11.8.4 CloudWatch Logs (AWS CLI)
+
+```bash
+# EC2インスタンスIDの取得
+INSTANCE_ID=$(ec2-metadata --instance-id | cut -d " " -f 2)
+
+# CloudWatch Logs 最新ログ確認
+aws logs tail /ec2/mailserver-mx --since 30m --format short
+
+# Postfixログストリーム確認
+aws logs tail /ec2/mailserver-mx --log-stream-name postfix --since 30m --format short
+
+# user-dataログストリーム確認
+aws logs tail /ec2/mailserver-mx --log-stream-name user-data --format short
+```
+
+---
+
+### 11.9 接続性テスト
+
+#### 11.9.1 内部から外部への接続
+
+```bash
+# インターネット接続確認
+ping -c 3 8.8.8.8
+# 期待される出力: 3 packets transmitted, 3 received, 0% packet loss
+
+# DNS解決確認
+ping -c 3 google.com
+# 期待される出力: PING google.com (142.250.x.x) ... 3 packets transmitted, 3 received
+
+# HTTP/HTTPS接続確認
+curl -I https://www.google.com
+# 期待される出力: HTTP/2 200
+```
+
+#### 11.9.2 Dell WorkStationへの接続
+
+```bash
+# Tailscale VPN経由でDell Workstationにping
+ping -c 3 100.110.222.53
+# 期待される出力: 3 packets transmitted, 3 received, 0% packet loss
+
+# Dell LMTP ポート接続確認
+nc -zv 100.110.222.53 2525
+# 期待される出力: Ncat: Connected to 100.110.222.53:2525.
+
+# Dell LMTPとの対話的接続テスト
+telnet 100.110.222.53 2525
+# 期待される応答:
+# 220 dell-workstation.tail67811d.ts.net ESMTP Postfix (Dovecot LMTP)
+# (QUIT で終了)
+```
+
+#### 11.9.3 外部からEC2への接続 (Dell WorkStationから実行)
+
+**注意**: この操作はDell WorkStation側で実行
+
+```bash
+# Dell WorkStationからEC2へのping (Tailscale経由)
+tailscale ping <EC2 Tailscale IP>
+# 期待される出力: pong from mailserver-mx-ec2 via DERP in XXms
+
+# Dell WorkStationからEC2 SMTP接続テスト
+nc -zv <EC2 Tailscale IP> 25
+# 期待される出力: Ncat: Connected to <EC2 IP>:25.
+
+# Dell WorkStationからEC2 Public IP SMTP接続テスト
+nc -zv 43.207.242.167 25
+# 期待される出力: Ncat: Connected to 43.207.242.167:25.
+```
+
+#### 11.9.4 SMTP E2Eテスト
+
+```bash
+# EC2にSSH接続した状態で、外部メールサーバー経由でSMTP受信テスト
+# (事前にDellのRoundcubeにログインし、受信トレイを確認できる状態にしておく)
+
+# テストメール送信 (別のターミナルから)
+(echo "EHLO test.example.com"; sleep 1; \
+ echo "MAIL FROM:<test@example.com>"; sleep 1; \
+ echo "RCPT TO:<your-email@kuma8088.com>"; sleep 1; \
+ echo "DATA"; sleep 1; \
+ echo "Subject: EC2 MX Gateway Test"; echo ""; \
+ echo "This is a test mail from EC2 MX Gateway"; \
+ echo "."; sleep 1; \
+ echo "QUIT") | nc 43.207.242.167 25
+
+# EC2でPostfixログ確認
+docker logs mailserver-postfix --tail 20 | grep "relay="
+# 期待される出力: status=sent (relay to Dell via Tailscale)
+
+# Dell でDovecotログ確認 (Dell WorkStationで実行)
+docker logs mailserver-dovecot --tail 20 | grep "saved mail"
+# 期待される出力: lmtp(...): saved mail to INBOX
+
+# Roundcubeで受信トレイ確認 (ブラウザ)
+# https://dell-workstation.tail67811d.ts.net/
+# 受信トレイに "EC2 MX Gateway Test" というメールが届いているか確認
+```
+
+---
+
+### 11.10 セキュリティ設定確認
+
+#### 11.10.1 SELinux状態
+
+```bash
+# SELinux状態確認
+getenforce
+# 期待される出力: Enforcing (有効) または Disabled (無効)
+
+# SELinux設定確認
+cat /etc/selinux/config
+# 期待される出力: SELINUX=enforcing または permissive または disabled
+
+# SELinux拒否ログ確認 (有効な場合)
+ausearch -m avc -ts recent
+# 期待される出力: <no matches> (拒否なし) または 拒否ログ
+```
+
+#### 11.10.2 iptablesルール確認
+
+```bash
+# IPv4 iptables ルール確認
+sudo iptables -L -n -v
+# 期待される出力: デフォルトポリシーACCEPT、Tailscale関連ルール
+
+# NAT テーブル確認
+sudo iptables -t nat -L -n -v
+# 期待される出力: Tailscale NAT rules (ts-forward, ts-input)
+
+# Tailscale専用チェーン確認
+sudo iptables -L ts-forward -n -v
+sudo iptables -L ts-input -n -v
+# 期待される出力: Tailscale traffic forwarding rules
+```
+
+#### 11.10.3 SSH設定確認
+
+```bash
+# SSH設定ファイル確認
+sudo cat /etc/ssh/sshd_config | grep -E "PermitRootLogin|PasswordAuthentication|PubkeyAuthentication"
+# 期待される出力:
+# PermitRootLogin no または prohibit-password
+# PasswordAuthentication no
+# PubkeyAuthentication yes
+
+# SSH公開鍵確認
+cat ~/.ssh/authorized_keys
+# 期待される出力: 登録済み公開鍵リスト
+
+# SSHアクティブ接続確認
+who
+# 期待される出力: 現在のSSHセッション情報
+```
+
+#### 11.10.4 AWS Security Group確認
+
+```bash
+# インスタンスIDの取得
+INSTANCE_ID=$(ec2-metadata --instance-id | cut -d " " -f 2)
+
+# Security Group ID取得
+SG_ID=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID \
+  --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' \
+  --output text)
+
+# Security Group Ingress ルール確認
+aws ec2 describe-security-groups --group-ids $SG_ID \
+  --query 'SecurityGroups[0].IpPermissions' \
+  --output table
+
+# ポート25のルール詳細確認
+aws ec2 describe-security-groups --group-ids $SG_ID \
+  --query 'SecurityGroups[0].IpPermissions[?FromPort==`25`]' \
+  --output table
+# 期待される出力:
+# FromPort: 25
+# ToPort: 25
+# IpProtocol: tcp
+# IpRanges: 0.0.0.0/0
+```
+
+---
+
+### 11.11 リソース使用状況確認
+
+#### 11.11.1 CPU・メモリ使用率
+
+```bash
+# リアルタイムリソース監視 (top)
+top -n 1 -b | head -20
+# 期待される出力: CPU使用率, メモリ使用率, プロセス一覧
+
+# CPU使用率のみ確認
+top -n 1 -b | grep "Cpu(s)" | awk '{print $2}' | cut -d% -f1
+# 期待される出力: XX.X (CPUアイドル率)
+
+# メモリ使用状況
+free -h
+# 期待される出力:
+#               total        used        free      shared  buff/cache   available
+# Mem:          480Mi       XXXMi       XXXMi       XXMi       XXXMi       XXXMi
+# Swap:           0B          0B          0B
+
+# プロセス別メモリ使用状況
+ps aux --sort=-%mem | head -10
+# 期待される出力: メモリ使用率上位10プロセス
+```
+
+#### 11.11.2 ディスク使用状況
+
+```bash
+# ディスク使用率
+df -h
+# 期待される出力:
+# Filesystem      Size  Used Avail Use% Mounted on
+# /dev/xvda1      8.0G  X.XG  X.XG  XX% /
+# tmpfs           240M     0  240M   0% /dev/shm
+# /dev/xvda128     10M  X.XM  X.XM  XX% /boot/efi
+
+# inode使用状況
+df -i
+# 期待される出力: inode使用率 (通常 <10%)
+
+# Docker関連ディスク使用状況
+docker system df
+# 期待される出力:
+# TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+# Images          X         X         XXX MB    XXX MB (XX%)
+# Containers      X         X         XXX kB    XXX kB (XX%)
+# Local Volumes   X         X         XXX MB    XXX MB (XX%)
+```
+
+#### 11.11.3 ネットワーク帯域使用状況
+
+```bash
+# インターフェース別トラフィック統計
+ip -s link show
+# 期待される出力:
+# eth0: RX bytes: XXXXXXX, TX bytes: XXXXXXX
+# tailscale0: RX bytes: XXXXXXX, TX bytes: XXXXXXX
+
+# リアルタイムネットワーク使用率 (ifstat がある場合)
+# sudo dnf install -y sysstat
+# ifstat -i eth0,tailscale0 1 3
+# 期待される出力: 1秒ごとの送受信レート (KB/s)
+
+# Docker コンテナのネットワーク使用状況
+docker stats --no-stream mailserver-postfix --format "table {{.Name}}\t{{.NetIO}}"
+# 期待される出力: mailserver-postfix    XXX kB / XXX kB
+```
+
+---
+
+### 11.12 CloudWatch Agent確認
+
+#### 11.12.1 CloudWatch Agent状態
+
+```bash
+# CloudWatch Agent サービス状態
+systemctl status amazon-cloudwatch-agent
+# 期待される出力: active (running)
+
+# CloudWatch Agent 設定ファイル確認
+cat /opt/aws/amazon-cloudwatch-agent/etc/config.json
+# 期待される出力: logs と metrics 設定
+
+# CloudWatch Agent ログ確認
+journalctl -u amazon-cloudwatch-agent --since "1 hour ago" --no-pager | tail -50
+# 期待される出力: メトリクス送信・ログ送信のログ
+```
+
+#### 11.12.2 CloudWatch Metrics送信確認
+
+```bash
+# インスタンスIDの取得
+INSTANCE_ID=$(ec2-metadata --instance-id | cut -d " " -f 2)
+
+# CloudWatch カスタムメトリクス確認 (CPU使用率)
+aws cloudwatch get-metric-statistics \
+  --namespace Mailserver/EC2 \
+  --metric-name CPU_IDLE \
+  --dimensions Name=InstanceId,Value=$INSTANCE_ID \
+  --start-time $(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 60 \
+  --statistics Average \
+  --output table
+
+# CloudWatch カスタムメトリクス確認 (メモリ使用率)
+aws cloudwatch get-metric-statistics \
+  --namespace Mailserver/EC2 \
+  --metric-name MEM_USED \
+  --dimensions Name=InstanceId,Value=$INSTANCE_ID \
+  --start-time $(date -u -d '10 minutes ago' +%Y-%m-%dT%H:%M:%S) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --period 60 \
+  --statistics Average \
+  --output table
+```
+
+---
+
+### 11.13 よくある問題の診断コマンド集
+
+#### 11.13.1 メール受信失敗時
+
+```bash
+# 1. SMTP ポート開放確認
+ss -tuln | grep :25
+# 期待される出力: LISTEN 状態
+
+# 2. Postfix プロセス確認
+docker exec mailserver-postfix ps aux | grep master
+# 期待される出力: postfix master process
+
+# 3. Postfix エラーログ確認
+docker logs mailserver-postfix 2>&1 | grep -i -E "error|fatal|warning" | tail -20
+
+# 4. Security Group確認
+aws ec2 describe-security-groups --group-ids $(aws ec2 describe-instances \
+  --instance-ids $(ec2-metadata --instance-id | cut -d " " -f 2) \
+  --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' --output text) \
+  --query 'SecurityGroups[0].IpPermissions[?FromPort==`25`]'
+
+# 5. iptables確認
+sudo iptables -L INPUT -n -v | grep -E "25|ACCEPT"
+```
+
+#### 11.13.2 Tailscale接続失敗時
+
+```bash
+# 1. Tailscale サービス確認
+systemctl status tailscaled
+# 期待される出力: active (running)
+
+# 2. Tailscale接続状態確認
+tailscale status
+# 期待される出力: Dell WorkStationが "active" または "idle"
+
+# 3. Tailscale再接続
+sudo tailscale down
+sudo tailscale up --accept-routes
+
+# 4. Tailscale ログ確認
+journalctl -u tailscaled --since "10 minutes ago" --no-pager | tail -30
+
+# 5. Tailscale ping確認
+tailscale ping 100.110.222.53
+# 期待される出力: pong from dell-workstation
+```
+
+#### 11.13.3 メールリレー失敗時
+
+```bash
+# 1. RELAYHOST設定確認
+docker exec mailserver-postfix postconf relayhost
+# 期待される出力: relayhost = [100.110.222.53]:2525
+
+# 2. Dell LMTP接続確認
+nc -zv 100.110.222.53 2525
+# 期待される出力: Ncat: Connected
+
+# 3. Postfixキュー確認
+docker exec mailserver-postfix postqueue -p
+# 期待される出力: Mail queue is empty (正常) または キューにメールあり
+
+# 4. Postfixリレーログ確認
+docker logs mailserver-postfix 2>&1 | grep "relay=" | tail -10
+# 期待される出力: status=sent または status=deferred
+
+# 5. Dell側のLMTPログ確認 (Dell WorkStationで実行)
+docker logs mailserver-dovecot 2>&1 | grep "lmtp" | tail -20
+```
+
+#### 11.13.4 Docker起動失敗時
+
+```bash
+# 1. Docker サービス状態確認
+systemctl status docker
+# 期待される出力: active (running)
+
+# 2. Docker サービス起動
+sudo systemctl start docker
+
+# 3. Docker ログ確認
+journalctl -u docker --since "10 minutes ago" --no-pager | tail -30
+
+# 4. Docker Compose設定確認
+cd /opt/mailserver && docker-compose config
+# 期待される出力: パースされたdocker-compose.yml
+
+# 5. コンテナ手動起動
+cd /opt/mailserver && docker-compose up -d
+```
+
+---
+
+### 11.14 診断結果レポート生成
+
+全ての確認項目を自動実行し、レポートファイルに出力するスクリプト例:
+
+```bash
+#!/bin/bash
+# EC2診断レポート生成スクリプト
+# 実行: sudo bash /opt/mailserver/diagnostic-report.sh
+
+REPORT_FILE="/var/log/ec2-diagnostic-$(date +%Y%m%d-%H%M%S).log"
+
+echo "=== EC2 MX Gateway Diagnostic Report ===" > $REPORT_FILE
+echo "Timestamp: $(date)" >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "### 1. System Information ###" >> $REPORT_FILE
+uname -a >> $REPORT_FILE
+cat /etc/os-release >> $REPORT_FILE
+uptime >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "### 2. Service Status ###" >> $REPORT_FILE
+systemctl status docker --no-pager >> $REPORT_FILE 2>&1
+systemctl status tailscaled --no-pager >> $REPORT_FILE 2>&1
+systemctl status amazon-cloudwatch-agent --no-pager >> $REPORT_FILE 2>&1
+echo "" >> $REPORT_FILE
+
+echo "### 3. Network Interfaces ###" >> $REPORT_FILE
+ip addr show >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "### 4. Routing Table ###" >> $REPORT_FILE
+ip route show >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "### 5. Listening Ports ###" >> $REPORT_FILE
+ss -tuln >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "### 6. Docker Containers ###" >> $REPORT_FILE
+docker ps -a >> $REPORT_FILE
+docker stats --no-stream mailserver-postfix >> $REPORT_FILE 2>&1
+echo "" >> $REPORT_FILE
+
+echo "### 7. Postfix Configuration ###" >> $REPORT_FILE
+docker exec mailserver-postfix postconf relayhost >> $REPORT_FILE 2>&1
+docker exec mailserver-postfix postconf relay_domains >> $REPORT_FILE 2>&1
+docker exec mailserver-postfix postqueue -p >> $REPORT_FILE 2>&1
+echo "" >> $REPORT_FILE
+
+echo "### 8. Tailscale Status ###" >> $REPORT_FILE
+tailscale status >> $REPORT_FILE
+tailscale ping 100.110.222.53 >> $REPORT_FILE 2>&1
+echo "" >> $REPORT_FILE
+
+echo "### 9. Connectivity Tests ###" >> $REPORT_FILE
+nc -zv localhost 25 >> $REPORT_FILE 2>&1
+nc -zv 100.110.222.53 2525 >> $REPORT_FILE 2>&1
+echo "" >> $REPORT_FILE
+
+echo "### 10. Resource Usage ###" >> $REPORT_FILE
+free -h >> $REPORT_FILE
+df -h >> $REPORT_FILE
+top -n 1 -b | head -20 >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "### 11. Recent Logs ###" >> $REPORT_FILE
+echo "--- user_data.sh ---" >> $REPORT_FILE
+tail -50 /var/log/user-data.log >> $REPORT_FILE
+echo "--- Postfix ---" >> $REPORT_FILE
+docker logs mailserver-postfix --tail 30 >> $REPORT_FILE 2>&1
+echo "--- Tailscale ---" >> $REPORT_FILE
+journalctl -u tailscaled --since "30 minutes ago" --no-pager >> $REPORT_FILE
+echo "" >> $REPORT_FILE
+
+echo "=== Report Generated: $REPORT_FILE ===" >> $REPORT_FILE
+
+echo "✅ Diagnostic report generated: $REPORT_FILE"
+cat $REPORT_FILE
+```
+
+使用方法:
+
+```bash
+# レポート生成スクリプト作成
+sudo cat > /opt/mailserver/diagnostic-report.sh <<'EOF'
+[上記のスクリプト内容]
+EOF
+
+# 実行権限付与
+sudo chmod +x /opt/mailserver/diagnostic-report.sh
+
+# レポート生成
+sudo /opt/mailserver/diagnostic-report.sh
+
+# レポート確認
+ls -lh /var/log/ec2-diagnostic-*.log
+```
+
+---
+
+## 12. 重要な設定上の注意事項
+
+### ⚠️ SMTP→LMTPプロトコル設定の重要性
+
+**概要**: EC2 PostfixからDell Dovecotへのメールリレー時には、**必ずLMTPプロトコルを使用**すること。
+
+#### プロトコルの違い
+
+| プロトコル | 用途 | Postfix環境変数 | 使用例 |
+|-----------|------|----------------|--------|
+| **SMTP** | MTA間メール転送 (Server-to-Server) | `RELAYHOST` | 外部メールサーバーへのリレー |
+| **LMTP** | MTA→MDA最終配信 (Server-to-Local) | `POSTFIX_relay_transport=lmtp:` | Dovecotへの最終配信 |
+
+#### ❌ 誤った設定例
+
+```yaml
+environment:
+  - RELAYHOST=[100.110.222.53]:2525  # ❌ SMTPプロトコル → エラー発生
+```
+
+**エラーログ**:
+```
+status=bounced (host 100.110.222.53[100.110.222.53] refused to talk to me: 500 5.5.1 Unknown command)
+```
+
+**原因**: PostfixがSMTP `HELO`コマンドを送信するが、DovecotはLMTPプロトコルを期待しているため拒否。
+
+#### ✅ 正しい設定例
+
+```yaml
+environment:
+  - POSTFIX_relay_transport=lmtp:[100.110.222.53]:2525  # ✅ LMTPプロトコル
+```
+
+**成功ログ**:
+```
+status=sent (250 2.0.0 <recipient@kuma8088.com> ... Saved)
+```
+
+#### 設定チェックリスト
+
+EC2メールサーバーを構築・再構築する際は、以下を必ず確認してください:
+
+- [ ] `RELAYHOST`環境変数を**使用していない**こと
+- [ ] `POSTFIX_relay_transport=lmtp:[Dell-IP]:2525`を設定していること
+- [ ] Dell側のポート2525がDovecot **LMTPサービス**であることを確認
+- [ ] `relay_domains`に**有効なドメインのみ**が含まれていること（例: kuma8088.com）
+- [ ] 不要なドメイン（例: m8088.com）が**削除されている**こと
+
+#### 検証方法
+
+```bash
+# 1. Postfix設定確認
+docker exec mailserver-postfix postconf relay_transport
+# 期待される出力: relay_transport = lmtp:[100.110.222.53]:2525
+
+# 2. テストメール送信
+echo "Test" | docker exec -i mailserver-postfix sendmail -f test@kuma8088.com target@kuma8088.com
+
+# 3. 成功ログ確認
+docker logs mailserver-postfix | grep "status=sent.*Saved"
+# 期待される出力: status=sent (250 2.0.0 ... Saved)
+
+# 4. Dell側LMTP配信確認 (Dell WorkStationで実行)
+docker logs mailserver-dovecot | grep "saved mail"
+# 期待される出力: lmtp(...): saved mail to INBOX
+```
+
+#### トラブルシューティング参照
+
+プロトコル設定に関する詳細なトラブルシューティングは、以下のドキュメントを参照してください:
+
+- **完全なトラブルシューティングガイド**: `services/mailserver/troubleshoot/EC2_MAIL_PROTOCOL_ISSUE_2025-11-04.md`
+- **根本原因分析**: SMTP→LMTPプロトコル不一致の詳細な解説
+- **再構築時のチェックリスト**: 全ての設定ファイルの一貫性確認手順
+
+---
+
+**作成者**: Claude Code
+**レビュー**: 未実施
+**承認**: 未実施
+**ステータス**: 実装中 (デプロイ完了待ち)

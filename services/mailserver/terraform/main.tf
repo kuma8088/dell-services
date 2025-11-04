@@ -29,6 +29,9 @@ provider "aws" {
   }
 }
 
+# Get current AWS account ID
+data "aws_caller_identity" "current" {}
+
 # ============================================================================
 # Variables
 # ============================================================================
@@ -261,6 +264,29 @@ resource "aws_iam_role_policy_attachment" "execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Inline policy granting Secrets Manager access to execution role
+resource "aws_iam_role_policy" "execution_role_secrets_access" {
+  name = "mailserver-execution-secrets-access"
+  role = aws_iam_role.execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = [
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:mailserver/tailscale/fargate-auth-key-*",
+          "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:mailserver/sendgrid/api-key-*"
+        ]
+      }
+    ]
+  })
+}
+
 # ============================================================================
 # IAM Role: ECS Task Role (for application runtime)
 # ============================================================================
@@ -307,6 +333,130 @@ resource "aws_iam_role_policy" "task_role_secrets_access" {
       }
     ]
   })
+}
+
+# ============================================================================
+# EC2 MX Gateway Resources (v6.0 Architecture)
+# ============================================================================
+# Purpose: EC2-based MX gateway replacing Fargate
+# Implements lessons learned from Fargate troubleshooting
+# Reference: Docs/application/mailserver/04_EC2Server.md
+# ============================================================================
+
+# CloudWatch Log Group for EC2
+resource "aws_cloudwatch_log_group" "ec2_mx_logs" {
+  name              = "/ec2/mailserver-mx"
+  retention_in_days = 7
+
+  tags = {
+    Name        = "mailserver-mx-ec2-logs"
+    Environment = "production"
+  }
+}
+
+# IAM Role for EC2 Instance
+resource "aws_iam_role" "ec2_mx_role" {
+  name = "mailserver-ec2-mx-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "mailserver-ec2-mx-role"
+    Environment = "production"
+  }
+}
+
+# IAM Policy for Secrets Manager Access (Tailscale Auth Key)
+resource "aws_iam_role_policy" "ec2_secrets_policy" {
+  name = "mailserver-ec2-secrets-policy"
+  role = aws_iam_role.ec2_mx_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ]
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:mailserver/tailscale/ec2-auth-key-*"
+      }
+    ]
+  })
+}
+
+# IAM Policy for CloudWatch Logs
+resource "aws_iam_role_policy" "ec2_cloudwatch_policy" {
+  name = "mailserver-ec2-cloudwatch-policy"
+  role = aws_iam_role.ec2_mx_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "${aws_cloudwatch_log_group.ec2_mx_logs.arn}:*"
+      }
+    ]
+  })
+}
+
+# IAM Instance Profile
+resource "aws_iam_instance_profile" "ec2_mx_profile" {
+  name = "mailserver-ec2-mx-profile"
+  role = aws_iam_role.ec2_mx_role.name
+
+  tags = {
+    Name        = "mailserver-ec2-mx-profile"
+    Environment = "production"
+  }
+}
+
+# EC2 Instance for MX Gateway
+resource "aws_instance" "mailserver_mx" {
+  ami                         = "ami-0ad4e047a362f26b8" # Amazon Linux 2023 (ARM64) ap-northeast-1
+  instance_type               = "t4g.nano"
+  subnet_id                   = aws_subnet.public_subnet_1a.id
+  vpc_security_group_ids      = [aws_security_group.fargate_sg.id]
+  associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ec2_mx_profile.name
+
+  user_data = file("${path.module}/user_data.sh")
+
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 8
+    encrypted   = true
+  }
+
+  tags = {
+    Name        = "mailserver-mx-ec2"
+    Environment = "production"
+    Purpose     = "MX Gateway with Tailscale"
+  }
+}
+
+# Elastic IP Association to EC2
+resource "aws_eip_association" "mailserver_eip_ec2" {
+  instance_id   = aws_instance.mailserver_mx.id
+  allocation_id = aws_eip.mailserver_eip.id
 }
 
 # ============================================================================
@@ -381,6 +531,26 @@ output "execution_role_arn" {
 output "task_role_arn" {
   description = "ECS task role ARN"
   value       = aws_iam_role.task_role.arn
+}
+
+output "ec2_instance_id" {
+  description = "EC2 MX Gateway instance ID"
+  value       = aws_instance.mailserver_mx.id
+}
+
+output "ec2_instance_public_ip" {
+  description = "EC2 MX Gateway public IP (Elastic IP)"
+  value       = aws_eip.mailserver_eip.public_ip
+}
+
+output "ec2_instance_private_ip" {
+  description = "EC2 MX Gateway private IP"
+  value       = aws_instance.mailserver_mx.private_ip
+}
+
+output "ec2_cloudwatch_log_group" {
+  description = "CloudWatch Logs group for EC2"
+  value       = aws_cloudwatch_log_group.ec2_mx_logs.name
 }
 
 # ============================================================================

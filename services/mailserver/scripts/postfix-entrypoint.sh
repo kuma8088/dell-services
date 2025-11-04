@@ -1,5 +1,5 @@
 #!/bin/sh
-set -euo pipefail
+set -eu
 
 TEMPLATE_PATH="/etc/postfix/custom/main.cf.tmpl"
 OUTPUT_PATH="/etc/postfix/main.cf"

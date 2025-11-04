@@ -1,0 +1,105 @@
+{
+    "family": "mailserver-mx-task",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512",
+    "executionRoleArn": "arn:aws:iam::552927148143:role/mailserver-execution-role",
+    "taskRoleArn": "arn:aws:iam::552927148143:role/mailserver-task-role",
+    "containerDefinitions": [
+        {
+            "name": "postfix",
+            "image": "boky/postfix:latest",
+            "essential": true,
+            "environment": [
+                {
+                    "name": "ALLOW_EMPTY_SENDER_DOMAINS",
+                    "value": "true"
+                },
+                {
+                    "name": "ALLOWED_SENDER_DOMAINS",
+                    "value": ""
+                },
+                {
+                    "name": "RELAYHOST",
+                    "value": "[100.110.222.53]:2525"
+                },
+                {
+                    "name": "POSTFIX_inet_protocols",
+                    "value": "ipv4"
+                },
+                {
+                    "name": "POSTFIX_smtpd_recipient_restrictions",
+                    "value": "permit_mynetworks, permit_sasl_authenticated, check_relay_domains, permit"
+                },
+                {
+                    "name": "POSTFIX_relay_domains",
+                    "value": "kuma8088.com, m8088.com"
+                },
+                {
+                    "name": "POSTFIX_smtpd_client_restrictions",
+                    "value": "permit_mynetworks, permit_sasl_authenticated, permit"
+                },
+                {
+                    "name": "POSTFIX_smtpd_sender_restrictions",
+                    "value": "permit_mynetworks, permit_sasl_authenticated, permit"
+                }
+            ],
+            "portMappings": [
+                {
+                    "containerPort": 25,
+                    "protocol": "tcp"
+                }
+            ],
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "nc -z localhost 25 || exit 1"
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/mailserver-mx",
+                    "awslogs-region": "ap-northeast-1",
+                    "awslogs-stream-prefix": "postfix"
+                }
+            }
+        },
+        {
+            "name": "tailscale",
+            "image": "tailscale/tailscale:stable",
+            "essential": true,
+            "secrets": [
+                {
+                    "name": "TS_AUTHKEY",
+                    "valueFrom": "arn:aws:secretsmanager:ap-northeast-1:552927148143:secret:mailserver/tailscale/fargate-auth-key-j83uJT"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "TS_STATE_DIR",
+                    "value": "/var/lib/tailscale"
+                },
+                {
+                    "name": "TS_USERSPACE",
+                    "value": "true"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/mailserver-mx",
+                    "awslogs-region": "ap-northeast-1",
+                    "awslogs-stream-prefix": "tailscale"
+                }
+            }
+        }
+    ]
+}
