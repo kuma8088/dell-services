@@ -1,12 +1,33 @@
 # 開発進捗トラッキング (Development Progress)
 
 **最終更新**: 2025-11-05
-**現在のフェーズ**: Phase 1 - ドキュメント整備
-**全体進捗**: 10% (1/10 フェーズ完了)
+**現在のフェーズ**: Phase 1 - ドキュメント整備（MVP準備）
+**全体進捗**: MVP 20% (2/10 フェーズ完了)
 
 ---
 
-## 📊 全体ロードマップ
+## 📊 開発方針
+
+### MVP（最小構成）とExtended（拡張構成）の分離
+
+本プロジェクトは**段階的リリース**戦略を採用します：
+
+**MVP（最小実用製品）- v0.5.0**
+- 🎯 **目標**: 基本的なWeb UI経由でのユーザ管理機能を提供
+- 📦 **スコープ**: MariaDB + Flask + Bootstrap 5による管理画面
+- 🔐 **認証**: Flask-Login によるセッション管理
+- 📝 **データ永続化**: MariaDB (`mailserver_usermgmt` データベース)
+- ⚡ **リリース時期**: Phase 1-5 完了後
+
+**Extended（拡張構成）- v1.0.0+**
+- 🔄 **追加機能**: Dovecot SQL認証統合、Nginx統合、高度なテスト
+- 🏗️ **インフラ統合**: docker-compose統合、バックアップ自動化
+- 📊 **モニタリング**: 監査ログ、パフォーマンス最適化
+- 🚀 **リリース時期**: MVP安定稼働後
+
+---
+
+## 🎯 MVPロードマップ（最小構成 v0.5.0）
 
 | Phase | タスク | ステータス | 開始日 | 完了日 | 担当者 |
 |-------|--------|----------|--------|--------|--------|
@@ -16,13 +37,36 @@
 | **Phase 3** | 認証システム実装 | ⏳ 未着手 | - | - | - |
 | **Phase 4** | ユーザCRUD機能実装 | ⏳ 未着手 | - | - | - |
 | **Phase 5** | UI/テンプレート実装 | ⏳ 未着手 | - | - | - |
-| **Phase 6** | Dovecot SQL認証統合 | ⏳ 未着手 | - | - | - |
-| **Phase 7** | Nginx統合 | ⏳ 未着手 | - | - | - |
-| **Phase 8** | テスト・検証 | ⏳ 未着手 | - | - | - |
-| **Phase 9** | 本番デプロイ準備 | ⏳ 未着手 | - | - | - |
-| **Phase 10** | 本番リリース | ⏳ 未着手 | - | - | - |
+
+**MVP完了条件**:
+- ✅ Tailscale VPN経由でWebブラウザからアクセス可能
+- ✅ ログイン認証が機能している
+- ✅ ユーザの新規作成・編集・削除が可能
+- ✅ MariaDBに変更が永続化されている
+- ✅ 基本的なUI（Bootstrap 5）が動作している
 
 ---
+
+## 🚀 Extendedロードマップ（拡張構成 v1.0.0）
+
+| Phase | タスク | ステータス | 開始日 | 完了日 | 担当者 |
+|-------|--------|----------|--------|--------|--------|
+| **Phase 6** | Dovecot SQL認証統合 | ⏳ MVP後 | - | - | - |
+| **Phase 7** | Nginx統合 | ⏳ MVP後 | - | - | - |
+| **Phase 8** | テスト・検証 | ⏳ MVP後 | - | - | - |
+| **Phase 9** | 本番デプロイ準備 | ⏳ MVP後 | - | - | - |
+| **Phase 10** | 本番リリース | ⏳ MVP後 | - | - | - |
+
+**Extended完了条件**:
+- ✅ DovecotがMariaDBから直接認証可能
+- ✅ Nginx `/admin` パス統合完了
+- ✅ 包括的なテストスイート整備
+- ✅ docker-compose.yml統合
+- ✅ バックアップ・ロールバック手順確立
+
+---
+
+# 📋 MVP フェーズ詳細（Phase 0-5）
 
 ## Phase 0: プロジェクト初期化 ✅
 
@@ -62,18 +106,20 @@
 - [x] `DEVELOPMENT.md` 作成 - 開発進捗トラッキング (本ファイル)
 - [x] `API.md` 作成 - API エンドポイント仕様
 - [x] `CHANGELOG.md` 作成 - 変更履歴
+- [x] MVP/Extended フェーズ分離
 
 ### 成果物
 
 - `README.md` - プロジェクトの全体像、アーキテクチャ、セットアップ手順
-- `DEVELOPMENT.md` - フェーズ別進捗管理
-- `API.md` - RESTful API 仕様書
+- `DEVELOPMENT.md` - MVP/Extendedフェーズ別進捗管理
+- `API.md` - RESTful API 仕様書（MVP/Extended分離）
 - `CHANGELOG.md` - バージョン管理と変更履歴
 
 ### 課題・メモ
 
 - ドキュメントは開発進行に伴い継続的に更新
 - 設計書 (`05_user_management_design.md`) との整合性維持
+- MVP完了後にExtendedフェーズへ移行
 
 ---
 
@@ -82,28 +128,38 @@
 **期間**: 未定
 **ステータス**: 未着手
 **見積もり**: 2-3時間
+**優先度**: 🔴 高（MVP必須）
+
+### 前提条件
+
+- ✅ MariaDB コンテナ稼働中 (`mailserver-mariadb`)
+- ✅ DB切り替え完了（メール送受信確認済み）
+- ⏳ `.env` ファイルに `USERMGMT_DB_PASSWORD` 設定
 
 ### タスク一覧
 
 - [ ] `app/services/database.py` - SQLAlchemy 初期化、DB接続管理
 - [ ] `app/models/user.py` - User モデル定義
-- [ ] `app/models/domain.py` - Domain モデル定義
-- [ ] `app/models/audit_log.py` - AuditLog モデル定義
+- [ ] `app/models/domain.py` - Domain モデル定義（簡易版）
+- [ ] `app/models/audit_log.py` - AuditLog モデル定義（簡易版）
 - [ ] `scripts/init_db.py` - MariaDB スキーマ作成スクリプト
-- [ ] MariaDB データベース作成 (`mailserver_usermgmt`)
-- [ ] テーブル作成 (users, domains, audit_logs)
 - [ ] DB接続テスト
-
-### 前提条件
-
-- MariaDB コンテナ稼働中 (`mailserver-mariadb`)
-- `.env` ファイルに `USERMGMT_DB_PASSWORD` 設定済み
 
 ### 成果物 (予定)
 
-- SQLAlchemy モデル定義ファイル
-- データベーススキーマ (SQL)
-- 初期化スクリプト
+```python
+# User モデル（MVP最小構成）
+class User(db.Model):
+    __tablename__ = 'users'
+
+    email = Column(String(255), primary_key=True)
+    password_hash = Column(String(255), nullable=False)
+    maildir = Column(String(255), nullable=False)
+    quota = Column(Integer, default=1024)
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+```
 
 ### 技術メモ
 
@@ -111,6 +167,8 @@
 # SQLAlchemy 設定例
 SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 SQLALCHEMY_TRACK_MODIFICATIONS = False
+SQLALCHEMY_POOL_SIZE = 5
+SQLALCHEMY_POOL_RECYCLE = 3600
 ```
 
 ---
@@ -120,36 +178,43 @@ SQLALCHEMY_TRACK_MODIFICATIONS = False
 **期間**: 未定
 **ステータス**: 未着手
 **見積もり**: 2-3時間
+**優先度**: 🔴 高（MVP必須）
+
+### 前提条件
+
+- ✅ Phase 2 (データベース基盤) 完了
 
 ### タスク一覧
 
 - [ ] Flask-Login 統合
 - [ ] `app/routes/auth.py` - ログイン/ログアウトルート
 - [ ] `app/services/password.py` - パスワードハッシュ化 (SHA512-CRYPT)
-- [ ] `templates/login.html` - ログイン画面
+- [ ] `templates/login.html` - ログイン画面（Bootstrap 5）
 - [ ] セッション管理 (Cookie設定)
 - [ ] CSRF 保護 (Flask-WTF)
 - [ ] 認証デコレータ (`@login_required`)
 
-### 前提条件
-
-- Phase 2 (データベース基盤) 完了
-
 ### 成果物 (予定)
-
-- ログイン/ログアウト機能
-- セッション管理
-- 管理者認証
-
-### 技術メモ
 
 ```python
 # パスワードハッシュ化
 from passlib.hash import sha512_crypt
 
 def hash_password(password: str) -> str:
+    """Dovecot互換SHA512-CRYPTハッシュ生成"""
     return "{SHA512-CRYPT}" + sha512_crypt.hash(password)
+
+def verify_password(password: str, hash: str) -> bool:
+    """パスワード検証"""
+    hash_value = hash.replace("{SHA512-CRYPT}", "")
+    return sha512_crypt.verify(password, hash_value)
 ```
+
+### 検証項目
+
+- [ ] ログイン成功時にセッションCookieが設定される
+- [ ] ログアウト時にセッションが破棄される
+- [ ] `@login_required` デコレータが未認証アクセスをブロック
 
 ---
 
@@ -158,6 +223,12 @@ def hash_password(password: str) -> str:
 **期間**: 未定
 **ステータス**: 未着手
 **見積もり**: 4-5時間
+**優先度**: 🔴 高（MVP必須）
+
+### 前提条件
+
+- ✅ Phase 2 (データベース基盤) 完了
+- ✅ Phase 3 (認証システム) 完了
 
 ### タスク一覧
 
@@ -168,23 +239,12 @@ def hash_password(password: str) -> str:
 - [ ] ユーザ編集 (`POST /users/<email>/edit`)
 - [ ] ユーザ削除 (`POST /users/<email>/delete`)
 - [ ] パスワード変更 (`POST /users/<email>/password`)
-- [ ] 監査ログ記録
-
-### 前提条件
-
-- Phase 2 (データベース基盤) 完了
-- Phase 3 (認証システム) 完了
+- [ ] 基本的な監査ログ記録（作成・更新・削除イベント）
 
 ### 成果物 (予定)
 
-- ユーザCRUD API エンドポイント
-- ビジネスロジック実装
-- 監査ログ機能
-
-### 技術メモ
-
 ```python
-# ユーザ作成例
+# ユーザ作成例（MVP最小構成）
 @app.route('/users/new', methods=['POST'])
 @login_required
 def create_user():
@@ -192,15 +252,33 @@ def create_user():
     password = request.form['password']
     quota = int(request.form.get('quota', 1024))
 
-    # ユーザ作成ロジック
-    user_service.create_user(email, password, quota)
+    # maildir自動生成
+    domain = email.split('@')[1]
+    username = email.split('@')[0]
+    maildir = f"/var/mail/vmail/{domain}/{username}/"
 
-    # 監査ログ記録
-    audit_log.log('USER_CREATED', email, request.remote_addr)
+    # ユーザ作成
+    user = User(
+        email=email,
+        password_hash=hash_password(password),
+        maildir=maildir,
+        quota=quota,
+        enabled=True
+    )
 
-    flash('ユーザを作成しました', 'success')
+    db.session.add(user)
+    db.session.commit()
+
+    flash(f'ユーザ {email} を作成しました', 'success')
     return redirect(url_for('users.list'))
 ```
+
+### 検証項目
+
+- [ ] ユーザ作成後、MariaDBに反映される
+- [ ] ユーザ編集後、変更が永続化される
+- [ ] ユーザ削除後、DBから削除される
+- [ ] パスワード変更後、新パスワードでログイン可能
 
 ---
 
@@ -209,43 +287,91 @@ def create_user():
 **期間**: 未定
 **ステータス**: 未着手
 **見積もり**: 3-4時間
+**優先度**: 🔴 高（MVP必須）
+
+### 前提条件
+
+- ✅ Phase 4 (ユーザCRUD機能) 完了
 
 ### タスク一覧
 
 - [ ] `templates/base.html` - ベーステンプレート (Bootstrap 5)
-- [ ] `templates/dashboard.html` - ダッシュボード
+- [ ] `templates/dashboard.html` - ダッシュボード（ユーザ数表示）
 - [ ] `templates/users/list.html` - ユーザ一覧
 - [ ] `templates/users/create.html` - ユーザ作成フォーム
 - [ ] `templates/users/edit.html` - ユーザ編集フォーム
-- [ ] `templates/domains/list.html` - ドメイン一覧
-- [ ] `static/css/custom.css` - カスタムスタイル
+- [ ] `static/css/custom.css` - カスタムスタイル（最小限）
 - [ ] `static/js/validation.js` - フォームバリデーション
 - [ ] レスポンシブデザイン対応 (モバイル/タブレット)
 
-### 前提条件
-
-- Phase 4 (ユーザCRUD機能) 完了
-
 ### 成果物 (予定)
 
-- Bootstrap 5 ベースの UI
-- レスポンシブデザイン
-- フォームバリデーション
+**base.html テンプレート構成**:
+```html
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}メールユーザ管理{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">メールユーザ管理</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('auth.logout') }}">ログアウト</a>
+            </div>
+        </div>
+    </nav>
 
-### デザインガイドライン
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
 
-- **カラースキーム**: Bootstrap 5 デフォルト + カスタムカラー
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/validation.js') }}"></script>
+</body>
+</html>
+```
+
+### デザインガイドライン（MVP最小構成）
+
+- **カラースキーム**: Bootstrap 5 デフォルト
 - **フォント**: システムフォント (游ゴシック、Segoe UI)
-- **アイコン**: Bootstrap Icons
-- **レイアウト**: サイドバーナビゲーション
+- **アイコン**: Bootstrap Icons（CDN経由）
+- **レイアウト**: シンプルなトップナビゲーション
+
+### 検証項目
+
+- [ ] PC/Mac/スマートフォンで画面表示確認
+- [ ] フォーム送信でバリデーションエラーが表示される
+- [ ] Flashメッセージが正しく表示される
 
 ---
 
+# 🚀 Extended フェーズ詳細（Phase 6-10）
+
 ## Phase 6: Dovecot SQL認証統合 ⏳
 
-**期間**: 未定
-**ステータス**: 未着手
+**期間**: MVP完了後
+**ステータス**: MVP後
 **見積もり**: 2-3時間
+**優先度**: 🟡 中（Extended拡張）
+
+### 前提条件
+
+- ✅ MVP (Phase 1-5) 完了
+- ✅ MariaDB に users テーブル存在
+- ✅ Webアプリからユーザ作成可能
 
 ### タスク一覧
 
@@ -255,16 +381,6 @@ def create_user():
 - [ ] Dovecot 再起動
 - [ ] SQL認証テスト (既存ユーザでIMAPログイン)
 - [ ] File認証とSQL認証の並行稼働確認
-
-### 前提条件
-
-- Phase 4 (ユーザCRUD機能) 完了
-- MariaDB に users テーブル存在
-
-### 成果物 (予定)
-
-- Dovecot SQL認証設定ファイル
-- File認証との並行稼働
 
 ### ⚠️ 注意事項
 
@@ -283,9 +399,15 @@ docker exec mailserver-dovecot doveadm auth test test@kuma8088.com <password>
 
 ## Phase 7: Nginx統合 ⏳
 
-**期間**: 未定
-**ステータス**: 未着手
+**期間**: MVP完了後
+**ステータス**: MVP後
 **見積もり**: 1-2時間
+**優先度**: 🟡 中（Extended拡張）
+
+### 前提条件
+
+- ✅ MVP (Phase 1-5) 完了
+- ✅ usermgmt コンテナ稼働中
 
 ### タスク一覧
 
@@ -296,16 +418,6 @@ docker exec mailserver-dovecot doveadm auth test test@kuma8088.com <password>
 - [ ] Cookie 設定 (HttpOnly, Secure, SameSite)
 - [ ] Nginx reload
 - [ ] アクセステスト (Tailscale VPN 経由)
-
-### 前提条件
-
-- Phase 5 (UI/テンプレート) 完了
-- usermgmt コンテナ稼働中
-
-### 成果物 (予定)
-
-- Nginx リバースプロキシ設定
-- Tailscale VPN アクセス制限
 
 ### 検証項目
 
@@ -323,9 +435,10 @@ curl -k https://<Public_IP>/admin
 
 ## Phase 8: テスト・検証 ⏳
 
-**期間**: 未定
-**ステータス**: 未着手
+**期間**: MVP完了後
+**ステータス**: MVP後
 **見積もり**: 2-3時間
+**優先度**: 🟢 低（Extended拡張）
 
 ### タスク一覧
 
@@ -341,22 +454,15 @@ curl -k https://<Public_IP>/admin
   - [ ] CSRF 保護確認
   - [ ] SQLインジェクション対策確認
   - [ ] XSS 対策確認
-- [ ] パフォーマンステスト
-- [ ] レスポンシブデザインテスト (モバイル/タブレット)
-
-### 成果物 (予定)
-
-- テストコード (pytest)
-- テストカバレッジレポート
-- 検証チェックリスト
 
 ---
 
 ## Phase 9: 本番デプロイ準備 ⏳
 
-**期間**: 未定
-**ステータス**: 未着手
+**期間**: MVP完了後
+**ステータス**: MVP後
 **見積もり**: 2時間
+**優先度**: 🟡 中（Extended拡張）
 
 ### タスク一覧
 
@@ -365,31 +471,15 @@ curl -k https://<Public_IP>/admin
 - [ ] バックアップスクリプト作成
 - [ ] ロールバック手順書作成
 - [ ] モニタリング設定 (ログ監視)
-- [ ] ドキュメント最終確認
-
-### 成果物 (予定)
-
-- デプロイ手順書
-- ロールバック手順書
-- バックアップスクリプト
 
 ---
 
 ## Phase 10: 本番リリース ⏳
 
-**期間**: 未定
-**ステータス**: 未着手
+**期間**: MVP完了後
+**ステータス**: MVP後
 **見積もり**: 1時間
-
-### タスク一覧
-
-- [ ] 本番環境デプロイ
-- [ ] 最終検証チェックリスト実施
-- [ ] 既存ユーザ認証確認
-- [ ] 新規ユーザ作成テスト
-- [ ] パスワード変更テスト
-- [ ] 監査ログ確認
-- [ ] リリースノート作成
+**優先度**: 🟢 低（Extended拡張）
 
 ### 最終検証チェックリスト
 
@@ -413,42 +503,56 @@ curl -k https://<Public_IP>/admin
 
 ### 技術的な決定事項
 
-1. **データベース**: MariaDB ベースのアプローチを採用 (File ベースは採用しない)
+1. **MVP/Extended分離方針**
+   - MVP: Web管理画面の基本機能に集中（Phase 1-5）
+   - Extended: Dovecot統合、Nginx統合、包括的テスト（Phase 6-10）
+   - 理由: 段階的リリースによるリスク低減、早期フィードバック取得
+
+2. **データベース**: MariaDB ベースのアプローチを採用
    - 理由: 監査ログ、検索機能、将来拡張を考慮
-   - 既存環境への影響: Dovecot 設定に `!include auth-sql.conf.ext` 追加のみ
+   - 現状: DB切り替え完了、メール送受信確認済み
 
-2. **認証方式**: File 認証と SQL 認証の並行稼働
-   - 理由: 既存ユーザとの互換性維持、段階的移行
-   - 移行フェーズ不要
+3. **認証方式（MVP）**: Flask-Login によるセッション管理
+   - 理由: シンプル、Python標準、迅速な開発
+   - Extended: Tailscale OAuth統合を検討
 
-3. **UI フレームワーク**: Bootstrap 5
+4. **UI フレームワーク**: Bootstrap 5
    - 理由: レスポンシブデザイン対応、モバイルデバイス管理に最適
 
-4. **パスワードハッシュ**: SHA512-CRYPT
+5. **パスワードハッシュ**: SHA512-CRYPT
    - 理由: Dovecot 標準方式、既存環境との互換性
 
-### パフォーマンス最適化メモ
+### MVPリリース基準
 
-- SQLAlchemy のコネクションプール設定
-- Gunicorn ワーカー数: 2 (CPU 1コア想定)
-- Nginx リバースプロキシキャッシュ (静的ファイル)
+以下の条件を満たした時点でMVP v0.5.0をリリース:
+- ✅ Webブラウザから管理画面にログイン可能
+- ✅ ユーザの追加・編集・削除が動作
+- ✅ MariaDBへの変更が永続化
+- ✅ 基本的なUIが動作（PC/スマホ対応）
+- ✅ 簡易な監査ログ（作成・更新・削除イベント）
 
-### セキュリティ強化メモ
+### Extendedリリース基準
 
-- Tailscale VPN アクセス制限 (100.0.0.0/10)
-- HTTPS 強制
-- CSRF 保護 (Flask-WTF)
-- セッション Cookie 設定 (HttpOnly, Secure, SameSite=Strict)
+MVP安定稼働後、以下を追加してv1.0.0をリリース:
+- ✅ Dovecot SQL認証統合
+- ✅ Nginx `/admin` パス統合
+- ✅ 包括的なテストスイート
+- ✅ docker-compose.yml統合
+- ✅ バックアップ・ロールバック手順
 
 ---
 
 ## 📅 次回のレビュー
 
-**予定日**: Phase 2 完了後
-**レビュー項目**:
-- データベーススキーマの妥当性
-- モデル定義の完全性
-- DB接続の安定性
+**MVP Phase 2 開始前レビュー**:
+- データベーススキーマの妥当性確認
+- モデル定義の設計レビュー
+- 環境変数設定の確認
+
+**MVP完了後レビュー**:
+- Web管理画面の動作確認
+- MariaDB永続化確認
+- Extendedフェーズへの移行判断
 
 ---
 
