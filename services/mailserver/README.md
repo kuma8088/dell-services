@@ -8,6 +8,8 @@
 - テンプレートは環境変数で値が埋め込まれます。`MAIL_DOMAIN`・`MAIL_HOSTNAME`・`MAIL_ADDITIONAL_DOMAINS`・`POSTFIX_RELAYHOST`・`POSTFIX_MESSAGE_SIZE_LIMIT`・`POSTFIX_TLS_CERT_FILE`・`POSTFIX_TLS_KEY_FILE` を設定すると、再起動ごとに最新値へ反映されます。
 - `MAIL_ADDITIONAL_DOMAINS` にスペース区切りで複数ドメインを指定すると、自動で `virtual_mailbox_domains` にカンマ区切りで展開されます。
 - `config/postfix/sasl_passwd` はコンテナ起動時に `/etc/postfix/sasl_passwd` へコピーされ、`postmap` が自動実行されます。
+- ClamAV は `config/clamav/clamd.conf` と `config/clamav/freshclam.conf` を読み込みます。`LocalSocket` を `/var/run/clamav/clamd.ctl` に揃えているため、FreshClam の NotifyClamd が正しく動作し、ウイルス定義更新後にデーモンへ通知されます。
+- Nginx は `/etc/nginx/templates/*.template` に配置した `mailserver.conf.template` を `envsubst` で展開します。`MAIL_HOSTNAME` と `TLS_CERT_FILE`/`TLS_KEY_FILE` は `.env` の値（Postfix と共通）を使用し、`NGINX_DOLLAR=$$` を渡すことで `$host` などの Nginx 変数を保持します。
 
 ## 事前準備
 
@@ -45,6 +47,20 @@ sudo tailscale cert \
 
 `tailscale cert` を定期的に実行する systemd timer を設定しておくと、証明書更新が自動化できます。
 
+### 3. SendGrid API Key 取得（Secrets Manager）
+
+AWS CLI の認証情報が設定されている状態で、Secrets Manager から API Key を取得し `sasl_passwd` に反映できます。
+
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/mailserver
+./scripts/sync-sendgrid-sasl.sh \
+  arn:aws:secretsmanager:ap-northeast-1:552927148143:secret:mailserver/sendgrid/api-key-76cdsG
+# 実行後に Postfix を再読込
+docker compose restart postfix
+```
+
+デフォルトのシークレット ID (`mailserver/sendgrid/api-key`) を使う場合は引数を省略できます。
+
 ## 起動
 
 ```bash
@@ -54,11 +70,28 @@ docker compose up -d postfix
 
 初回起動時に `postfix-entrypoint.sh` がテンプレートをレンダリングし、`/etc/postfix/main.cf` と SASL マップを生成します。ログは `logs/postfix/` に出力されます。
 
+Nginx のテンプレートを反映する場合は以下のように起動します。`MAIL_HOSTNAME` や証明書パスを `.env` で更新したあとに再起動すると、`/etc/nginx/conf.d/mailserver.conf` が自動生成されます。
+
+```bash
+docker compose up -d nginx
+docker compose logs -f nginx
+```
+
+ClamAV の設定を反映する場合は以下の順で再起動してください。
+
+```bash
+docker compose up -d clamav
+docker compose logs -f clamav
+```
+
+FreshClam が正常に完了すると `freshclam.log` に「Clamd was NOT notified」警告が出ず、ウイルス定義更新後に通知メッセージが記録されます。
+
 ## トラブルシュート
 
 - **TLS 証明書が見つからない**: `POSTFIX_TLS_CERT_FILE` と `POSTFIX_TLS_KEY_FILE` のパスを確認し、ホスト側でファイルが存在するかチェックしてください。スクリプトはファイル欠如を警告しますが、Postfix は TLS なしで起動します。
 - **SendGrid 認証失敗**: `config/postfix/sasl_passwd` が正しい API Key を保持しているか、コンテナ起動後に `postmap` が自動生成した `sasl_passwd.db` が存在するか確認します。
 - **追加ドメインが反映されない**: `.env` の `MAIL_ADDITIONAL_DOMAINS` を編集後、`docker compose restart postfix` で再起動すると新しい main.cf が生成されます。
+- **Nginx が `$magicdns_name` など未知の変数で停止する**: テンプレートへ直接値を書き込む必要はありません。`.env` の `MAIL_HOSTNAME`／証明書パスを更新し、`docker compose up -d nginx` を再実行してください。`NGINX_DOLLAR=$$` 環境変数が渡されていることを確認すると `$host` や `$scheme` が正しく展開されます。
 
 ## 構成ファイルの追加
 

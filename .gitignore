@@ -73,3 +73,13 @@ terraform.tfstate.*
 # Local environment secrets
 .env
 *.env
+
+# Mailserver runtime artifacts
+services/mailserver/data/
+services/mailserver/logs/
+services/mailserver/backups/
+
+# Mailserver secrets and authentication (NEVER commit these)
+services/mailserver/config/postfix/sasl_passwd
+services/mailserver/config/postfix/sasl_passwd.db
+services/mailserver/config/dovecot/users

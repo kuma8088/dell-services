@@ -59,11 +59,11 @@ services:
 
   # Postfix MTA (SendGrid Relay専用)
   postfix:
-    image: postfix:3.8-alpine
+    image: boky/postfix:latest
     container_name: mailserver-postfix
     hostname: ${MAIL_HOSTNAME}
     restart: always
-    entrypoint: ["/opt/mailserver/scripts/postfix-entrypoint.sh"]
+    entrypoint: [ "/opt/mailserver/scripts/postfix-entrypoint.sh" ]
     networks:
       mailserver_network:
         ipv4_address: 172.20.0.20
@@ -106,6 +106,7 @@ services:
     container_name: mailserver-dovecot
     hostname: dovecot
     restart: always
+    command: ["/usr/sbin/dovecot", "-F", "-c", "/etc/dovecot/custom/dovecot.conf"]
     networks:
       mailserver_network:
         ipv4_address: 172.20.0.30
@@ -117,6 +118,7 @@ services:
       - TZ=${TZ}
     volumes:
       - ./config/dovecot:/etc/dovecot/custom
+      - ./config/dovecot/users:/etc/dovecot/users:ro
       - mail_data:/var/mail/vhosts
       - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
       - ./logs/dovecot:/var/log
@@ -126,7 +128,7 @@ services:
           cpus: '${DOVECOT_CPU_LIMIT}'
           memory: ${DOVECOT_MEM_LIMIT}
     healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "2525" ]
+      test: [ "CMD-SHELL", "doveadm -c /etc/dovecot/dovecot.conf service status imap >/dev/null 2>&1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -155,7 +157,7 @@ services:
           cpus: '${RSPAMD_CPU_LIMIT}'
           memory: ${RSPAMD_MEM_LIMIT}
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:11334/" ]
+      test: [ "CMD-SHELL", "rspamadm control stat >/dev/null 2>&1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -172,6 +174,8 @@ services:
         ipv4_address: 172.20.0.80
     volumes:
       - clamav_data:/var/lib/clamav
+      - ./config/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+      - ./config/clamav/freshclam.conf:/etc/clamav/freshclam.conf:ro
       - ./logs/clamav:/var/log/clamav
     environment:
       - TZ=${TZ}
@@ -181,7 +185,7 @@ services:
           cpus: '${CLAMAV_CPU_LIMIT}'
           memory: ${CLAMAV_MEM_LIMIT}
     healthcheck:
-      test: [ "CMD", "/usr/local/bin/clamdcheck.sh" ]
+      test: [ "CMD-SHELL", "clamdscan --fdpass --no-summary /etc/hosts >/dev/null 2>&1" ]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -202,16 +206,21 @@ services:
       - ROUNDCUBEMAIL_DB_NAME=${MYSQL_DATABASE}
       - ROUNDCUBEMAIL_DB_USER=${MYSQL_USER}
       - ROUNDCUBEMAIL_DB_PASSWORD=${MYSQL_PASSWORD}
-      - ROUNDCUBEMAIL_DEFAULT_HOST=ssl://dovecot
+      - ROUNDCUBEMAIL_DEFAULT_HOST=ssl://dell-workstation.tail67811d.ts.net
       - ROUNDCUBEMAIL_DEFAULT_PORT=993
-      - ROUNDCUBEMAIL_SMTP_SERVER=tls://postfix
+      - ROUNDCUBEMAIL_SMTP_SERVER=tls://dell-workstation.tail67811d.ts.net
       - ROUNDCUBEMAIL_SMTP_PORT=587
+      # SMTP認証を無効化（Postfix submissionは mynetworks からの接続を許可）
+      - ROUNDCUBEMAIL_SMTP_USER=
+      - ROUNDCUBEMAIL_SMTP_PASS=
       - ROUNDCUBEMAIL_UPLOAD_MAX_FILESIZE=25M
       - ROUNDCUBEMAIL_DES_KEY=${ROUNDCUBE_DES_KEY}
       - TZ=${TZ}
     volumes:
       - ./config/roundcube:/var/roundcube/config
       - ./logs/roundcube:/var/log/roundcube
+      # カスタム設定: SMTP認証無効化（Postfix submissionはmynetworksから接続許可）
+      - ./config/roundcube/smtp_noauth.inc.php:/var/www/html/config/smtp_noauth.inc.php:ro
     depends_on:
       - mariadb
       - dovecot
@@ -237,9 +246,13 @@ services:
       - "443:443"
     environment:
       - TZ=${TZ}
+      - MAIL_HOSTNAME=${MAIL_HOSTNAME}
+      - TLS_CERT_FILE=${POSTFIX_TLS_CERT_FILE:-/var/lib/tailscale/certs/tls.crt}
+      - TLS_KEY_FILE=${POSTFIX_TLS_KEY_FILE:-/var/lib/tailscale/certs/tls.key}
+      - NGINX_DOLLAR=$$
     volumes:
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./config/nginx/templates:/etc/nginx/templates:ro
       - /var/lib/tailscale/certs:/var/lib/tailscale/certs:ro
       - ./logs/nginx:/var/log/nginx
     depends_on:

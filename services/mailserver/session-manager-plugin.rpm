@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>PermanentRedirect</Code><Message>The bucket you are attempting to access must be addressed using the specified endpoint. Please send all future requests to this endpoint.</Message><Endpoint>s3.amazonaws.com</Endpoint><Bucket>session-manager-downloads</Bucket><RequestId>VA1C6268B5P080D1</RequestId><HostId>M+U6wh3LG/p/ZlkwLKc960k2k/S1GX6K3TCcVHmJfZBBCaaiYQlReL4DZ9Q2yXeuAE5V8vOqmn8=</HostId></Error>
