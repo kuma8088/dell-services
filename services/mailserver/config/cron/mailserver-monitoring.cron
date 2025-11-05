@@ -1,0 +1,28 @@
+# Mailserver Monitoring Cron Jobs
+# Phase 9: Production Deployment Preparation
+#
+# Installation:
+# sudo cp config/cron/mailserver-monitoring.cron /etc/cron.d/mailserver-monitoring
+# sudo chmod 644 /etc/cron.d/mailserver-monitoring
+#
+# Or add to root crontab:
+# sudo crontab -e
+# (paste lines below)
+
+# Health monitoring every 15 minutes
+*/15 * * * * /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/monitor-health.sh >> /var/log/mailserver/health-monitor.log 2>&1
+
+# Daily backup at 2:00 AM
+0 2 * * * /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup-mailserver.sh >> /var/log/mailserver/backup.log 2>&1
+
+# Weekly full backup (including mail data) on Sunday at 3:00 AM
+0 3 * * 0 /opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup-mailserver.sh --include-mail-data >> /var/log/mailserver/backup.log 2>&1
+
+# Docker cleanup every Monday at 4:00 AM (remove unused images/volumes)
+0 4 * * 1 cd /opt/onprem-infra-system/project-root-infra/services/mailserver && docker system prune -af --volumes --filter "until=168h" >> /var/log/mailserver/docker-cleanup.log 2>&1
+
+# Certificate renewal check daily at 5:00 AM (Tailscale cert refresh)
+0 5 * * * MAGICDNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')  && sudo tailscale cert --cert-file /var/lib/tailscale/certs/tls.crt --key-file /var/lib/tailscale/certs/tls.key "${MAGICDNS_NAME}" >> /var/log/mailserver/cert-renewal.log 2>&1
+
+# Check and report disk usage weekly on Sunday at 1:00 AM
+0 1 * * 0 df -h /opt/onprem-infra-system/project-root-infra/services/mailserver/data/* | grep -v "Filesystem" >> /var/log/mailserver/disk-usage.log

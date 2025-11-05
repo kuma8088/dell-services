@@ -2,6 +2,31 @@
 
 このディレクトリは Dell 側メールサーバー環境を Docker Compose で起動するための設定とスクリプトを保持します。Postfix の構成はテンプレート化され、コンテナ起動時に自動生成されます。
 
+## Docker Compose サービス構成
+
+Dell上で稼働中の8つのコンテナ:
+
+| サービス | 役割 | ポート | 説明 |
+|---------|------|--------|------|
+| **postfix** | SMTP送信 | 25, 587 | SendGrid経由でメール送信 |
+| **dovecot** | IMAP/POP3受信 | 993, 995, 2525 | メール受信・保存（LMTP） |
+| **mariadb** | データベース | 3306 | ユーザー管理・Roundcube DB |
+| **clamav** | ウイルススキャン | - | メール添付ファイルスキャン |
+| **rspamd** | スパムフィルタ | - | スパム判定・学習 |
+| **roundcube** | Webメール | 8080 | ブラウザメールクライアント |
+| **usermgmt** | ユーザー管理 | 5001 | Flask管理画面（Phase 11） |
+| **nginx** | リバースプロキシ | 443 | HTTPS終端・Tailscale証明書 |
+
+**ネットワーク構成**:
+- Dell: Docker Composeでホスト上に直接起動
+- EC2: Docker MX Gateway（mailserver-postfixコンテナ）
+- 通信: EC2 → Tailscale VPN → Dell (100.110.222.53:2525)
+
+**データ永続化**:
+- メールボックス: `./data/vmail`
+- MariaDB: `./data/db`
+- Rspamd学習データ: `./data/rspamd`
+
 ## 仕組みの概要
 
 - `docker-compose.yml` の `postfix` サービスは `./config/postfix/main.cf.tmpl` を参照し、エントリポイントスクリプト (`scripts/postfix-entrypoint.sh`) が起動時に `/etc/postfix/main.cf` を生成します。

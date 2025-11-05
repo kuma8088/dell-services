@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユーザ一覧 - メールユーザー管理</title>
+
+    <!-- Bootstrap 5.3.x CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .content-card {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            border-radius: 15px;
+            border: none;
+        }
+        .table-responsive {
+            border-radius: 10px;
+        }
+        .btn-action {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">メールユーザー管理</a>
+            <div class="d-flex">
+                <form method="POST" action="{{ url_for('auth.logout') }}">
+                    <button type="submit" class="btn btn-outline-light">ログアウト</button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card content-card">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-people-fill"></i> ユーザ一覧</h2>
+                    <a href="{{ url_for('users.create') }}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> 新規ユーザ作成
+                    </a>
+                </div>
+
+                <!-- Domain Filter -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <form method="GET" action="{{ url_for('users.list') }}">
+                            <div class="input-group">
+                                <select name="domain_id" class="form-select" onchange="this.form.submit()">
+                                    <option value="">すべてのドメイン</option>
+                                    {% for domain in domains %}
+                                        <option value="{{ domain.id }}" {% if domain.id == selected_domain_id %}selected{% endif %}>
+                                            {{ domain.name }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-secondary" type="submit">
+                                    <i class="bi bi-funnel"></i> フィルタ
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Users Table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>メールアドレス</th>
+                                <th>ドメイン</th>
+                                <th>クォータ (MB)</th>
+                                <th>ステータス</th>
+                                <th>作成日</th>
+                                <th>アクション</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if users %}
+                                {% for user in users %}
+                                    <tr>
+                                        <td>
+                                            <i class="bi bi-envelope"></i> {{ user.email }}
+                                        </td>
+                                        <td>{{ user.domain.name if user.domain else '-' }}</td>
+                                        <td>{{ user.quota }}</td>
+                                        <td>
+                                            {% if user.enabled %}
+                                                <span class="badge bg-success">有効</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">無効</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td>
+                                            <div class="btn-group" role="group">
+                                                <a href="{{ url_for('users.edit', email=user.email) }}"
+                                                   class="btn btn-sm btn-warning btn-action"
+                                                   title="編集">
+                                                    <i class="bi bi-pencil"></i>
+                                                </a>
+                                                <a href="{{ url_for('users.change_password', email=user.email) }}"
+                                                   class="btn btn-sm btn-info btn-action"
+                                                   title="パスワード変更">
+                                                    <i class="bi bi-key"></i>
+                                                </a>
+                                                <form method="POST" action="{{ url_for('users.toggle_status', email=user.email) }}" class="d-inline">
+                                                    <button type="submit"
+                                                            class="btn btn-sm {% if user.enabled %}btn-secondary{% else %}btn-success{% endif %} btn-action"
+                                                            title="{% if user.enabled %}無効化{% else %}有効化{% endif %}">
+                                                        <i class="bi bi-{% if user.enabled %}pause-circle{% else %}play-circle{% endif %}"></i>
+                                                    </button>
+                                                </form>
+                                                <form method="POST" action="{{ url_for('users.delete', email=user.email) }}"
+                                                      class="d-inline"
+                                                      onsubmit="return confirm('ユーザ {{ user.email }} を削除してもよろしいですか？');">
+                                                    <button type="submit" class="btn btn-sm btn-danger btn-action" title="削除">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">
+                                        <i class="bi bi-inbox"></i> ユーザが登録されていません
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-3 text-muted">
+                    <small><i class="bi bi-info-circle"></i> 登録ユーザ数: {{ users|length }} 件</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-3">
+            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-light">
+                <i class="bi bi-arrow-left"></i> ダッシュボードに戻る
+            </a>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5.3.x JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+</body>
+</html>

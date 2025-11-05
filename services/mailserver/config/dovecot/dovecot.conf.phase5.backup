@@ -35,11 +35,11 @@ passdb {
 
 userdb {
     driver = static
-    args = uid=1000 gid=1000 home=/var/mail/vhosts/%d/%n
+    args = uid=vmail gid=vmail home=/var/mail/vhosts/%d/%n
 }
 
-# SQL認証（全ユーザー） - Phase 11で有効化
-!include /etc/dovecot/custom/auth-sql.conf.ext
+# SQL認証（全ユーザー） - MySQLドライバーインストール後に有効化予定
+#!include auth-sql.conf.ext
 
 # LMTP設定（Fargate → Dellへの転送受信）
 service lmtp {

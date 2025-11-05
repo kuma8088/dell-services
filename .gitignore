@@ -86,3 +86,17 @@ services/mailserver/config/dovecot/users
 
 # Dovecot SQL configuration with credentials
 services/mailserver/config/dovecot/dovecot-sql.conf.ext
+
+# Claude Code settings with sensitive data
+.claude/settings.local.json
+
+# Backup files with credentials
+*.backup
+services/mailserver/.env.phase*.backup
+services/mailserver/docker-compose.yml.phase*.backup
+
+# Playwright MCP screenshots
+.playwright-mcp/
+
+# Serena MCP configuration
+.serena/

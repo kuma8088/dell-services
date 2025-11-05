@@ -1,0 +1,121 @@
+# Mailserver Log Rotation Configuration
+# Phase 9: Production Deployment Preparation
+#
+# Install to /etc/logrotate.d/mailserver
+# sudo cp config/logrotate/mailserver /etc/logrotate.d/mailserver
+# sudo chmod 644 /etc/logrotate.d/mailserver
+
+# Postfix logs
+/opt/onprem-infra-system/project-root-infra/services/mailserver/logs/postfix/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+    sharedscripts
+    postrotate
+        docker exec mailserver-postfix postfix reload > /dev/null 2>&1 || true
+    endscript
+}
+
+# Dovecot logs
+/opt/onprem-infra-system/project-root-infra/services/mailserver/logs/dovecot/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+    sharedscripts
+    postrotate
+        docker exec mailserver-dovecot doveadm reload > /dev/null 2>&1 || true
+    endscript
+}
+
+# Nginx logs
+/opt/onprem-infra-system/project-root-infra/services/mailserver/logs/nginx/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+    sharedscripts
+    postrotate
+        docker exec mailserver-nginx nginx -s reopen > /dev/null 2>&1 || true
+    endscript
+}
+
+# Usermgmt logs
+/opt/onprem-infra-system/project-root-infra/services/mailserver/logs/usermgmt/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+    sharedscripts
+    postrotate
+        docker exec mailserver-usermgmt kill -USR1 1 > /dev/null 2>&1 || true
+    endscript
+}
+
+# Roundcube logs
+/opt/onprem-infra-system/project-root-infra/services/mailserver/logs/roundcube/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+}
+
+# Rspamd logs
+/opt/onprem-infra-system/project-root-infra/services/mailserver/logs/rspamd/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+}
+
+# ClamAV logs
+/opt/onprem-infra-system/project-root-infra/services/mailserver/logs/clamav/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+}
+
+# Health monitoring logs
+/var/log/mailserver/health-monitor.log {
+    daily
+    missingok
+    rotate 30
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+}
+
+# Backup logs
+/opt/backups/mailserver/*.log {
+    weekly
+    missingok
+    rotate 4
+    compress
+    delaycompress
+    notifempty
+    create 0640 root root
+}

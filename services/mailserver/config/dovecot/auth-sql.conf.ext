@@ -1,13 +1,11 @@
-# SQL authentication configuration
-# This file defines passdb and userdb for SQL-based authentication
+# SQL Authentication Configuration
+# Phase 11 - Database-backed user authentication
 
-# Password database (authentication)
 passdb {
     driver = sql
     args = /etc/dovecot/custom/dovecot-sql.conf.ext
 }
 
-# User database (maildir location, uid, gid)
 userdb {
     driver = sql
     args = /etc/dovecot/custom/dovecot-sql.conf.ext

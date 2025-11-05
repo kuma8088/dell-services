@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユーザ作成 - メールユーザー管理</title>
+
+    <!-- Bootstrap 5.3.x CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .content-card {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            border-radius: 15px;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">メールユーザー管理</a>
+            <div class="d-flex">
+                <form method="POST" action="{{ url_for('auth.logout') }}">
+                    <button type="submit" class="btn btn-outline-light">ログアウト</button>
+                </form>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card content-card">
+            <div class="card-body p-4">
+                <h2 class="mb-4"><i class="bi bi-person-plus"></i> 新規ユーザ作成</h2>
+
+                <form method="POST" action="{{ url_for('users.create') }}">
+                    <!-- Email -->
+                    <div class="mb-3">
+                        <label for="email" class="form-label">
+                            <i class="bi bi-envelope"></i> メールアドレス <span class="text-danger">*</span>
+                        </label>
+                        <input type="email"
+                               class="form-control"
+                               id="email"
+                               name="email"
+                               placeholder="user@example.com"
+                               required
+                               autocomplete="email">
+                        <div class="form-text">
+                            完全なメールアドレスを入力してください（例: user@example.com）
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div class="mb-3">
+                        <label for="password" class="form-label">
+                            <i class="bi bi-key"></i> パスワード <span class="text-danger">*</span>
+                        </label>
+                        <input type="password"
+                               class="form-control"
+                               id="password"
+                               name="password"
+                               placeholder="パスワードを入力"
+                               required
+                               autocomplete="new-password"
+                               minlength="8">
+                        <div class="form-text">
+                            8文字以上のパスワードを設定してください
+                        </div>
+                    </div>
+
+                    <!-- Domain -->
+                    <div class="mb-3">
+                        <label for="domain_id" class="form-label">
+                            <i class="bi bi-globe"></i> ドメイン <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="domain_id" name="domain_id" required>
+                            <option value="">ドメインを選択してください</option>
+                            {% for domain in domains %}
+                                <option value="{{ domain.id }}">{{ domain.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Quota -->
+                    <div class="mb-3">
+                        <label for="quota" class="form-label">
+                            <i class="bi bi-hdd"></i> クォータ (MB)
+                        </label>
+                        <input type="number"
+                               class="form-control"
+                               id="quota"
+                               name="quota"
+                               value="1024"
+                               min="1"
+                               max="10240"
+                               step="1">
+                        <div class="form-text">
+                            メールボックスの容量制限（MB単位、1～10240MBの範囲で設定可能）
+                        </div>
+                    </div>
+
+                    <!-- Enabled -->
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="enabled"
+                                   name="enabled"
+                                   value="true"
+                                   checked>
+                            <label class="form-check-label" for="enabled">
+                                <i class="bi bi-check-circle"></i> ユーザを有効化
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            無効にすると、このユーザはログインできません
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{{ url_for('users.list') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> キャンセル
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> 作成
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5.3.x JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+</body>
+</html>
