@@ -1,16 +1,21 @@
-"""
-Flask application factory and configuration
+"""Flask application factory and configuration utilities."""
+from __future__ import annotations
 
-Implements Flask-Login integration with secure session management
-"""
 import os
-from datetime import timedelta
-from flask import Flask
-from flask_login import LoginManager
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Dict
+
 from dotenv import load_dotenv
+from flask import Flask, jsonify, render_template
+from flask_login import LoginManager, login_required
 
 # Load environment variables
 load_dotenv()
+
+# Base paths
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATE_DIR = BASE_DIR.parent / 'templates'
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -18,23 +23,18 @@ login_manager = LoginManager()
 # Initialize database
 from app.database import db
 
+if TYPE_CHECKING:  # pragma: no cover - imported only for type checking
+    from app.models.user import User
+    from flask import Blueprint
 
-def create_app(config=None):
-    """
-    Application factory for creating Flask app instances
+
+def create_app(config: Optional[Mapping[str, Any]] = None) -> Flask:
+    """Application factory for creating Flask app instances.
 
     Args:
-        config (dict, optional): Configuration overrides
-
-    Returns:
-        Flask: Configured Flask application instance
+        config: Optional configuration overrides.
     """
-    import os
-    # Get the base directory (project root)
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    template_dir = os.path.join(base_dir, 'templates')
-
-    app = Flask(__name__, template_folder=template_dir)
+    app = Flask(__name__, template_folder=str(TEMPLATE_DIR))
 
     # Load configuration
     configure_app(app, config)
@@ -48,13 +48,12 @@ def create_app(config=None):
     return app
 
 
-def configure_app(app, config=None):
-    """
-    Configure Flask application
+def configure_app(app: Flask, config: Optional[Mapping[str, Any]] = None) -> None:
+    """Configure Flask application settings.
 
     Args:
-        app: Flask application instance
-        config (dict, optional): Configuration overrides
+        app: Flask application instance.
+        config: Optional configuration overrides.
     """
     # Basic configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -87,12 +86,11 @@ def configure_app(app, config=None):
         app.config.update(config)
 
 
-def init_extensions(app):
-    """
-    Initialize Flask extensions
+def init_extensions(app: Flask) -> None:
+    """Initialize registered Flask extensions.
 
     Args:
-        app: Flask application instance
+        app: Flask application instance.
     """
     # Initialize database
     db.init_app(app)
@@ -102,18 +100,16 @@ def init_extensions(app):
 
     # Add context processor for current year
     @app.context_processor
-    def inject_now():
-        """Inject current datetime into all templates"""
-        from datetime import datetime
+    def inject_now() -> Dict[str, datetime]:
+        """Inject current datetime into all templates."""
         return {'now': datetime.now()}
 
 
-def init_login_manager(app):
-    """
-    Initialize Flask-Login LoginManager
+def init_login_manager(app: Flask) -> None:
+    """Configure Flask-Login integration.
 
     Args:
-        app: Flask application instance
+        app: Flask application instance.
     """
     login_manager.init_app(app)
 
@@ -125,16 +121,8 @@ def init_login_manager(app):
 
     # User loader callback
     @login_manager.user_loader
-    def load_user(user_id):
-        """
-        Load user by ID for Flask-Login
-
-        Args:
-            user_id (str): User ID as string
-
-        Returns:
-            User: User instance or None if not found
-        """
+    def load_user(user_id: str) -> Optional['User']:
+        """Load user by ID for Flask-Login."""
         from app.models.user import User
 
         try:
@@ -143,12 +131,11 @@ def init_login_manager(app):
             return None
 
 
-def register_blueprints(app):
-    """
-    Register Flask blueprints
+def register_blueprints(app: Flask) -> None:
+    """Register application blueprints.
 
     Args:
-        app: Flask application instance
+        app: Flask application instance.
     """
     # Import and register auth blueprint
     from app.routes.auth import auth_bp
@@ -163,36 +150,28 @@ def register_blueprints(app):
     app.register_blueprint(domains_bp)
 
     # Register health check route (for Docker healthcheck)
-    from flask import render_template, jsonify
-    from flask_login import login_required
-
     @app.route('/health')
     def health():
-        """Health check endpoint for Docker healthcheck and monitoring"""
-        return jsonify({
-            'status': 'healthy',
-            'service': 'mailserver-usermgmt',
-            'version': '0.5.0'  # MVP完了 (Phase 5)
-        }), 200
+        """Health check endpoint for Docker healthcheck and monitoring."""
+        return (
+            jsonify({
+                'status': 'healthy',
+                'service': 'mailserver-usermgmt',
+                'version': '0.5.0',  # MVP完了 (Phase 5)
+            }),
+            200,
+        )
 
     # Register dashboard route (temporary, will move to separate blueprint later)
     @app.route('/')
     @login_required
     def dashboard():
-        """Dashboard route (protected)"""
+        """Dashboard route (protected)."""
         return render_template('dashboard.html')
 
 
-def load_user(user_id):
-    """
-    Load user by ID for Flask-Login (exposed for testing)
-
-    Args:
-        user_id (str): User ID as string
-
-    Returns:
-        User: User instance or None if not found
-    """
+def load_user(user_id: str) -> Optional['User']:
+    """Load user by ID for Flask-Login (exposed for testing)."""
     from app.models.user import User
 
     try:

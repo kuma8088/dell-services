@@ -371,31 +371,31 @@ class TestUserServiceLogAudit:
     def test_create_audit_log(self, db_session):
         """TC-US-008-01: 監査ログ作成"""
         audit_log = UserService.log_audit(
-            action='test_action',
+            action='create',
             user_email='test@example.com',
             admin_ip='192.168.1.100',
             details='{"message": "Test audit log"}'
         )
 
         assert audit_log is not None
-        assert audit_log.action == 'test_action'
+        assert audit_log.action == 'create'
         assert audit_log.user_email == 'test@example.com'
         assert audit_log.admin_ip == '192.168.1.100'
         assert audit_log.details == '{"message": "Test audit log"}'
 
         # タイムスタンプが自動設定されている
-        assert audit_log.timestamp is not None
+        assert audit_log.created_at is not None
 
     def test_audit_log_persistence(self, db_session):
         """TC-US-008-02: 監査ログの永続化確認"""
         UserService.log_audit(
-            action='persist_test',
+            action='update',
             user_email='persist@example.com',
             admin_ip='10.0.1.1',
             details='Test persistence'
         )
 
         # データベースから取得できる
-        saved_log = AuditLog.query.filter_by(action='persist_test').first()
+        saved_log = AuditLog.query.filter_by(action='update', user_email='persist@example.com').first()
         assert saved_log is not None
         assert saved_log.user_email == 'persist@example.com'
