@@ -163,6 +163,14 @@ resource "aws_security_group" "fargate_sg" {
   vpc_id      = aws_vpc.mailserver_vpc.id
 
   ingress {
+    description = "Allow SSH inbound traffic from internet"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
     description = "Allow SMTP inbound traffic from internet"
     from_port   = 25
     to_port     = 25
@@ -345,18 +353,18 @@ resource "aws_iam_role_policy" "task_role_secrets_access" {
 
 # CloudWatch Log Group for EC2
 resource "aws_cloudwatch_log_group" "ec2_mx_logs" {
-  name              = "/ec2/mailserver-mx"
-  retention_in_days = 7
+  name              = terraform.workspace == "staging" ? "/ec2/mailserver-mx-staging" : "/ec2/mailserver-mx"
+  retention_in_days = var.log_retention_days
 
   tags = {
-    Name        = "mailserver-mx-ec2-logs"
-    Environment = "production"
+    Name        = terraform.workspace == "staging" ? "mailserver-mx-ec2-logs-staging" : "mailserver-mx-ec2-logs"
+    Environment = var.environment
   }
 }
 
 # IAM Role for EC2 Instance
 resource "aws_iam_role" "ec2_mx_role" {
-  name = "mailserver-ec2-mx-role"
+  name = terraform.workspace == "staging" ? "mailserver-ec2-mx-role-staging" : "mailserver-ec2-mx-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -372,14 +380,14 @@ resource "aws_iam_role" "ec2_mx_role" {
   })
 
   tags = {
-    Name        = "mailserver-ec2-mx-role"
-    Environment = "production"
+    Name        = terraform.workspace == "staging" ? "mailserver-ec2-mx-role-staging" : "mailserver-ec2-mx-role"
+    Environment = var.environment
   }
 }
 
 # IAM Policy for Secrets Manager Access (Tailscale Auth Key)
 resource "aws_iam_role_policy" "ec2_secrets_policy" {
-  name = "mailserver-ec2-secrets-policy"
+  name = terraform.workspace == "staging" ? "mailserver-ec2-secrets-policy-staging" : "mailserver-ec2-secrets-policy"
   role = aws_iam_role.ec2_mx_role.id
 
   policy = jsonencode({
@@ -398,7 +406,7 @@ resource "aws_iam_role_policy" "ec2_secrets_policy" {
 
 # IAM Policy for CloudWatch Logs
 resource "aws_iam_role_policy" "ec2_cloudwatch_policy" {
-  name = "mailserver-ec2-cloudwatch-policy"
+  name = terraform.workspace == "staging" ? "mailserver-ec2-cloudwatch-policy-staging" : "mailserver-ec2-cloudwatch-policy"
   role = aws_iam_role.ec2_mx_role.id
 
   policy = jsonencode({
@@ -420,12 +428,12 @@ resource "aws_iam_role_policy" "ec2_cloudwatch_policy" {
 
 # IAM Instance Profile
 resource "aws_iam_instance_profile" "ec2_mx_profile" {
-  name = "mailserver-ec2-mx-profile"
+  name = terraform.workspace == "staging" ? "mailserver-ec2-mx-profile-staging" : "mailserver-ec2-mx-profile"
   role = aws_iam_role.ec2_mx_role.name
 
   tags = {
-    Name        = "mailserver-ec2-mx-profile"
-    Environment = "production"
+    Name        = terraform.workspace == "staging" ? "mailserver-ec2-mx-profile-staging" : "mailserver-ec2-mx-profile"
+    Environment = var.environment
   }
 }
 
@@ -438,7 +446,8 @@ resource "aws_instance" "mailserver_mx" {
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ec2_mx_profile.name
 
-  user_data = file("${path.module}/user_data.sh")
+  # Conditionally use staging or production user_data based on workspace
+  user_data = file("${path.module}/${terraform.workspace == "staging" ? "user_data_staging.sh" : "user_data.sh"}")
 
   root_block_device {
     volume_type = "gp3"
@@ -447,8 +456,8 @@ resource "aws_instance" "mailserver_mx" {
   }
 
   tags = {
-    Name        = "mailserver-mx-ec2"
-    Environment = "production"
+    Name        = terraform.workspace == "staging" ? "mailserver-mx-ec2-staging" : "mailserver-mx-ec2"
+    Environment = var.environment
     Purpose     = "MX Gateway with Tailscale"
   }
 }
