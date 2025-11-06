@@ -33,4 +33,4 @@ class AuditLog(db.Model):
 
     def __repr__(self):
         """String representation of AuditLog"""
-        return f'<AuditLog {self.action} on {user_email} from {self.admin_ip}>'
+        return f'<AuditLog {self.action} on {self.user_email} from {self.admin_ip}>'

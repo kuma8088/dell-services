@@ -1,0 +1,12 @@
+# SQL Authentication Configuration
+# Staging環境 - Database-backed user authentication (read-only)
+
+passdb {
+    driver = sql
+    args = /etc/dovecot/custom/dovecot-sql.conf.ext
+}
+
+userdb {
+    driver = sql
+    args = /etc/dovecot/custom/dovecot-sql.conf.ext
+}

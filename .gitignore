@@ -28,6 +28,7 @@ htmlcov/
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 
@@ -86,6 +87,19 @@ services/mailserver/config/dovecot/users
 
 # Dovecot SQL configuration with credentials
 services/mailserver/config/dovecot/dovecot-sql.conf.ext
+
+# Staging environment runtime and secrets
+services/mailserver/data-staging/
+services/mailserver/logs-staging/
+services/mailserver/.env.staging
+services/mailserver/config-staging/postfix/sasl_passwd
+services/mailserver/config-staging/postfix/sasl_passwd.db
+services/mailserver/config-staging/dovecot/users
+services/mailserver/config-staging/dovecot/dovecot-sql.conf.ext
+
+# Terraform artifacts
+services/mailserver/terraform/*.tfplan
+services/mailserver/terraform/staging.tfplan
 
 # Claude Code settings with sensitive data
 .claude/settings.local.json

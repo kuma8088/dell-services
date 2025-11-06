@@ -39,9 +39,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 将来的なAWS移行を想定
 
 **現在の構成**:
-- ✅ Dell: Docker Compose環境（Mailserver稼働中）
-- ✅ EC2: Dockerコンテナ（MX Gateway稼働中）
+- ✅ Dell: Docker Compose環境（Postfix, Dovecot, MariaDB等のMailserver稼働中）
+- ✅ EC2: **PostfixがDockerコンテナで稼働**（MX Gateway）
 - 📝 KVM環境: 構築済みだが現在未使用（将来的な仮想化用）
+
+**重要:** Dell側・EC2側ともにPostfixはDockerコンテナで稼働しています。systemd/journalctlベースのコマンドではなく、`docker logs`/`docker exec`を使用してください。
 
 **ハードウェア制約**:
 - CPU: 6コア/12スレッド、RAM: 32GB、Storage: 3.6TB HDD + 390GB SSD
