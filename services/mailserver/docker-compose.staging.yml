@@ -8,6 +8,8 @@
 # - ボリューム名: postfix_spool → staging_postfix_spool
 # - コンテナ名プレフィックス: mailserver- → staging-mailserver-
 #
+# 環境変数は services/mailserver/.env.staging のみを参照（本番 .env と混在禁止）
+#
 # 主な変更点:
 # - ネットワーク: 172.21.0.0/24 (本番は 172.20.0.0/24)
 # - ポート: 3xxx番台 (本番環境との分離)
@@ -83,6 +85,7 @@ services:
     ports: !override []  # YAMLタグでベースファイルのports配列を完全に上書き
     # Postfix は内部ネットワークのみで動作（ポート公開なし）
     environment:
+      # Source: services/mailserver/.env.staging (staging only)
       - HOSTNAME=mail-staging.kuma8088.com
       - DOMAIN=${MAIL_DOMAIN}
       - TZ=${TZ}
@@ -129,6 +132,7 @@ services:
     # LMTPポート（2525）のみホストの3525ポートに公開
     # 他のポート（IMAPS 993, POP3S 995等）は内部ネットワークのみ
     environment:
+      # Source: services/mailserver/.env.staging (staging only)
       - TZ=${TZ}
     volumes:
       - ./config-staging/dovecot:/etc/dovecot/custom
@@ -190,6 +194,7 @@ services:
         ipv4_address: 172.21.0.40
     ports: !override []  # YAMLタグでベースファイルのports配列を完全に上書き
     environment:
+      # Source: services/mailserver/.env.staging (staging only)
       - ROUNDCUBEMAIL_DB_HOST=mariadb-staging
       - ROUNDCUBEMAIL_DEFAULT_HOST=ssl://dell-workstation.tail67811d.ts.net
       - ROUNDCUBEMAIL_DEFAULT_PORT=3993   # staging IMAPS port
@@ -207,6 +212,7 @@ services:
       mailserver_network:
         ipv4_address: 172.21.0.90
     environment:
+      # Source: services/mailserver/.env.staging (staging only)
       - DB_HOST=172.21.0.60  # staging MariaDB IP
       - FLASK_ENV=staging
     volumes:
@@ -230,6 +236,7 @@ services:
     # ポートは公開しない（内部ネットワークのみ）
     # Tailscale経由でアクセス: 172.21.0.10:80 (HTTP), 172.21.0.10:443 (HTTPS)
     environment:
+      # Source: services/mailserver/.env.staging (staging only)
       - TZ=${TZ}
       - MAIL_HOSTNAME=mail-staging.kuma8088.com
       - TLS_CERT_FILE=${POSTFIX_TLS_CERT_FILE:-/var/lib/tailscale/certs/tls.crt}
