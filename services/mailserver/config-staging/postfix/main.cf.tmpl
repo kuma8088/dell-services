@@ -1,0 +1,49 @@
+# ====================================
+# Staging環境用 Postfix 設定
+# ====================================
+#
+# 【重要】外部メール送信防止（第2層防御）
+# - relayhost設定は無効（.env.stagingで127.0.0.1:9999を指定）
+# - smtp_sasl_auth_enable = no で認証無効化
+# - 本設定により、SendGridへのメール送信が防止されます
+#
+# 基本設定
+myhostname = {{MAIL_HOSTNAME}}
+mydomain = {{MAIL_DOMAIN}}
+myorigin = $mydomain
+mydestination =
+
+# ネットワーク設定（staging専用サブネット）
+inet_interfaces = all
+inet_protocols = ipv4
+mynetworks = 127.0.0.0/8, 172.21.0.0/24
+
+# 外部メール送信防止（3層防御）
+#
+# 第1層防御: default_transportとrelay_transportでerror応答
+# すべての外部配送を明示的に拒否（最も強力な防御）
+default_transport = error:5.7.1 External delivery is disabled in staging environment
+relay_transport = error:5.7.1 External relay is disabled in staging environment
+
+# 第2層防御: SendGrid SMTP Relay設定（無効化）
+# 注意: relayhostは.env.stagingで無効な値（127.0.0.1:9999）を設定
+relayhost = {{POSTFIX_RELAYHOST}}
+smtp_sasl_auth_enable = no
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = encrypt
+smtp_tls_note_starttls_offer = yes
+
+# メールボックス設定（受信はDovecot LMTP経由）
+virtual_mailbox_domains = {{VIRTUAL_MAILBOX_DOMAINS}}
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+
+# メッセージサイズ制限
+message_size_limit = {{POSTFIX_MESSAGE_SIZE_LIMIT}}
+
+# SMTPD設定（Port 3587受信用: staging環境）
+smtpd_relay_restrictions = permit_mynetworks, defer_unauth_destination
+smtpd_sasl_auth_enable = no
+smtpd_tls_security_level = may
+smtpd_tls_cert_file = {{POSTFIX_TLS_CERT_FILE}}
+smtpd_tls_key_file = {{POSTFIX_TLS_KEY_FILE}}

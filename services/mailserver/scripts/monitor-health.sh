@@ -15,9 +15,12 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/shared/common.sh"
+
 # Configuration
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+SCRIPT_DIR="${MAILSERVER_SCRIPTS_DIR}"
+PROJECT_ROOT="${MAILSERVER_PROJECT_ROOT}"
 LOG_FILE="${PROJECT_ROOT}/logs/health-monitor.log"
 ALERT_EMAIL="${1:-}"
 
@@ -27,11 +30,11 @@ MEM_THRESHOLD=80  # Percentage
 DISK_THRESHOLD=85 # Percentage
 
 # Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RED="${MAILSERVER_COLOR_RED}"
+GREEN="${MAILSERVER_COLOR_GREEN}"
+YELLOW="${MAILSERVER_COLOR_YELLOW}"
+BLUE="${MAILSERVER_COLOR_BLUE}"
+NC="${MAILSERVER_COLOR_RESET}"
 
 # Status tracking
 CRITICAL_COUNT=0
@@ -62,7 +65,7 @@ log_error() {
 }
 
 log_section() {
-    echo -e "${BLUE}=== $1 ===${NC}"
+    mailserver_log_section "$1"
 }
 
 # Initialize log directory
