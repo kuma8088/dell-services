@@ -1,38 +1,21 @@
-"""
-Authorization decorators for route protection
+"""Authorization decorators for route protection."""
+from __future__ import annotations
 
-Provides decorators to restrict access based on user roles
-"""
 from functools import wraps
-from flask import flash, redirect, url_for, abort
+from typing import Any, Callable, TypeVar, cast
+
+from flask import abort, flash, redirect, url_for
 from flask_login import current_user
 
+F = TypeVar('F', bound=Callable[..., Any])
 
-def admin_required(f):
-    """
-    Decorator to require admin privileges for a route
 
-    Usage:
-        @bp.route('/admin-only')
-        @login_required
-        @admin_required
-        def admin_only_view():
-            return "Admin content"
+def admin_required(func: F) -> F:
+    """Ensure the current user holds administrator privileges."""
 
-    Behavior:
-        - If user not authenticated: redirect to login
-        - If user not admin: flash error and return 403 Forbidden
-        - If user is admin: proceed to route
-
-    Args:
-        f: The view function to decorate
-
-    Returns:
-        Decorated function that checks admin privileges
-    """
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Check if user is authenticated (should be handled by @login_required, but double-check)
+    @wraps(func)
+    def decorated_function(*args: Any, **kwargs: Any) -> Any:
+        # Check if user is authenticated (should be enforced by @login_required, but double-check)
         if not current_user.is_authenticated:
             flash('このページにアクセスするにはログインが必要です。', 'warning')
             return redirect(url_for('auth.login'))
@@ -43,6 +26,6 @@ def admin_required(f):
             abort(403)
 
         # User is authenticated and admin, proceed
-        return f(*args, **kwargs)
+        return func(*args, **kwargs)
 
-    return decorated_function
+    return cast(F, decorated_function)

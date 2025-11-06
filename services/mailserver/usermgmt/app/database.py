@@ -1,19 +1,15 @@
-"""
-Database configuration and initialization for usermgmt application
-"""
+"""Database configuration and initialization utilities."""
+from __future__ import annotations
+
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
 # Initialize SQLAlchemy instance
 db = SQLAlchemy()
 
 
-def init_db(app):
-    """
-    Initialize database with Flask app
-
-    Args:
-        app: Flask application instance
-    """
+def init_db(app: Flask) -> None:
+    """Initialize database bindings for the provided Flask application."""
     db.init_app(app)
 
     with app.app_context():

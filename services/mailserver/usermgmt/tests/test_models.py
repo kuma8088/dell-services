@@ -149,26 +149,26 @@ class TestDomainModel:
     def test_create_domain_with_valid_data(self, db_session):
         """TC-M-002-01: 有効なデータでドメイン作成"""
         domain = Domain(
-            domain='newdomain.com',
+            name='newdomain.com',
             enabled=True
         )
         db_session.add(domain)
         db_session.commit()
 
-        retrieved_domain = Domain.query.filter_by(domain='newdomain.com').first()
+        retrieved_domain = Domain.query.filter_by(name='newdomain.com').first()
         assert retrieved_domain is not None
-        assert retrieved_domain.domain == 'newdomain.com'
+        assert retrieved_domain.name == 'newdomain.com'
         assert retrieved_domain.enabled is True
 
     def test_domain_unique_constraint(self, db_session):
         """TC-M-002-02: ドメイン名の一意性制約"""
         # 1つ目のドメイン
-        domain1 = Domain(domain='duplicate.com', enabled=True)
+        domain1 = Domain(name='duplicate.com', enabled=True)
         db_session.add(domain1)
         db_session.commit()
 
         # 同じドメイン名で2つ目を作成
-        domain2 = Domain(domain='duplicate.com', enabled=True)
+        domain2 = Domain(name='duplicate.com', enabled=True)
         db_session.add(domain2)
 
         with pytest.raises(IntegrityError):
@@ -176,17 +176,17 @@ class TestDomainModel:
 
     def test_domain_enabled_default_value(self, db_session):
         """TC-M-002-03: enabled フィールドのデフォルト値"""
-        domain = Domain(domain='defaultdomain.com')
+        domain = Domain(name='defaultdomain.com')
         db_session.add(domain)
         db_session.commit()
 
-        retrieved_domain = Domain.query.filter_by(domain='defaultdomain.com').first()
+        retrieved_domain = Domain.query.filter_by(name='defaultdomain.com').first()
         assert retrieved_domain.enabled is True
 
     def test_domain_cascade_delete(self, db_session):
         """TC-M-002-04: ドメイン削除時のカスケード動作確認"""
         # 新しいドメインを作成
-        domain = Domain(domain='cascadetest.com', enabled=True)
+        domain = Domain(name='cascadetest.com', enabled=True)
         db_session.add(domain)
         db_session.commit()
         domain_id = domain.id
@@ -225,48 +225,48 @@ class TestAuditLogModel:
     def test_create_audit_log(self, db_session, test_user):
         """TC-M-003-01: 監査ログ作成"""
         audit = AuditLog(
-            user_id=test_user.id,
-            action='user_created',
-            ip_address='192.168.1.100',
-            user_agent='Mozilla/5.0'
+            user_email=test_user.email,
+            action='create',
+            admin_ip='192.168.1.100',
+            details='User created via test'
         )
         db_session.add(audit)
         db_session.commit()
 
-        retrieved_audit = AuditLog.query.filter_by(user_id=test_user.id).first()
+        retrieved_audit = AuditLog.query.filter_by(user_email=test_user.email).first()
         assert retrieved_audit is not None
-        assert retrieved_audit.action == 'user_created'
-        assert retrieved_audit.ip_address == '192.168.1.100'
-        assert retrieved_audit.user_agent == 'Mozilla/5.0'
+        assert retrieved_audit.action == 'create'
+        assert retrieved_audit.admin_ip == '192.168.1.100'
+        assert retrieved_audit.details == 'User created via test'
 
     def test_audit_log_timestamp(self, db_session, test_user):
         """TC-M-003-02: 監査ログタイムスタンプ自動生成"""
         before_creation = datetime.utcnow()
 
         audit = AuditLog(
-            user_id=test_user.id,
-            action='password_changed',
-            ip_address='10.0.1.50'
+            user_email=test_user.email,
+            action='password_change',
+            admin_ip='10.0.1.50'
         )
         db_session.add(audit)
         db_session.commit()
 
         after_creation = datetime.utcnow()
 
-        retrieved_audit = AuditLog.query.filter_by(action='password_changed').first()
-        assert retrieved_audit.timestamp is not None
-        assert before_creation <= retrieved_audit.timestamp <= after_creation
+        retrieved_audit = AuditLog.query.filter_by(action='password_change').first()
+        assert retrieved_audit.created_at is not None
+        assert before_creation <= retrieved_audit.created_at <= after_creation
 
     def test_audit_log_user_relationship(self, db_session, test_user):
-        """TC-M-003-03: User との外部キー関係"""
+        """TC-M-003-03: User とのメール連携"""
         audit = AuditLog(
-            user_id=test_user.id,
-            action='login',
-            ip_address='172.20.0.1'
+            user_email=test_user.email,
+            action='update',
+            admin_ip='172.20.0.1'
         )
         db_session.add(audit)
         db_session.commit()
 
-        # 監査ログから User を取得
-        retrieved_audit = AuditLog.query.filter_by(action='login').first()
-        assert retrieved_audit.user_id == test_user.id
+        # 監査ログから user_email を検証
+        retrieved_audit = AuditLog.query.filter_by(action='update').first()
+        assert retrieved_audit.user_email == test_user.email

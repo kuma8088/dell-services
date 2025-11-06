@@ -33,52 +33,6 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 # ============================================================================
-# Variables
-# ============================================================================
-
-variable "aws_region" {
-  description = "AWS region for mail server infrastructure"
-  type        = string
-  default     = "ap-northeast-1"
-}
-
-variable "environment" {
-  description = "Environment name (dev, staging, production)"
-  type        = string
-  default     = "production"
-}
-
-variable "vpc_cidr" {
-  description = "CIDR block for VPC"
-  type        = string
-  default     = "10.0.0.0/16"
-}
-
-variable "public_subnet_1a_cidr" {
-  description = "CIDR block for public subnet in ap-northeast-1a"
-  type        = string
-  default     = "10.0.1.0/24"
-}
-
-variable "public_subnet_1c_cidr" {
-  description = "CIDR block for public subnet in ap-northeast-1c"
-  type        = string
-  default     = "10.0.2.0/24"
-}
-
-variable "cluster_name" {
-  description = "ECS cluster name"
-  type        = string
-  default     = "mailserver-cluster"
-}
-
-variable "log_retention_days" {
-  description = "CloudWatch Logs retention period in days"
-  type        = number
-  default     = 30
-}
-
-# ============================================================================
 # Section 3.1: VPC Configuration
 # ============================================================================
 
@@ -163,9 +117,25 @@ resource "aws_security_group" "fargate_sg" {
   vpc_id      = aws_vpc.mailserver_vpc.id
 
   ingress {
+    description = "Allow SSH inbound traffic from internet"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
     description = "Allow SMTP inbound traffic from internet"
     from_port   = 25
     to_port     = 25
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow SMTP Submission inbound traffic"
+    from_port   = 587
+    to_port     = 587
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -225,11 +195,11 @@ resource "aws_ecs_cluster" "mailserver_cluster" {
 # ============================================================================
 
 resource "aws_cloudwatch_log_group" "ecs_mailserver_mx" {
-  name              = "/ecs/mailserver-mx"
+  name              = local.ecs_log_group_name
   retention_in_days = var.log_retention_days
 
   tags = {
-    Name = "mailserver-mx-logs"
+    Name = local.ecs_log_group_tag_name
   }
 }
 
@@ -238,7 +208,7 @@ resource "aws_cloudwatch_log_group" "ecs_mailserver_mx" {
 # ============================================================================
 
 resource "aws_iam_role" "execution_role" {
-  name = "mailserver-execution-role"
+  name = local.ecs_execution_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -254,7 +224,7 @@ resource "aws_iam_role" "execution_role" {
   })
 
   tags = {
-    Name = "mailserver-execution-role"
+    Name = local.ecs_execution_role_name
   }
 }
 
@@ -266,7 +236,7 @@ resource "aws_iam_role_policy_attachment" "execution_role_policy" {
 
 # Inline policy granting Secrets Manager access to execution role
 resource "aws_iam_role_policy" "execution_role_secrets_access" {
-  name = "mailserver-execution-secrets-access"
+  name = local.ecs_execution_policy_name
   role = aws_iam_role.execution_role.id
 
   policy = jsonencode({
@@ -292,7 +262,7 @@ resource "aws_iam_role_policy" "execution_role_secrets_access" {
 # ============================================================================
 
 resource "aws_iam_role" "task_role" {
-  name = "mailserver-task-role"
+  name = local.ecs_task_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -308,13 +278,13 @@ resource "aws_iam_role" "task_role" {
   })
 
   tags = {
-    Name = "mailserver-task-role"
+    Name = local.ecs_task_role_name
   }
 }
 
 # Inline policy granting Secrets Manager access
 resource "aws_iam_role_policy" "task_role_secrets_access" {
-  name = "mailserver-secrets-access"
+  name = local.ecs_task_policy_name
   role = aws_iam_role.task_role.id
 
   policy = jsonencode({
@@ -345,18 +315,18 @@ resource "aws_iam_role_policy" "task_role_secrets_access" {
 
 # CloudWatch Log Group for EC2
 resource "aws_cloudwatch_log_group" "ec2_mx_logs" {
-  name              = "/ec2/mailserver-mx"
-  retention_in_days = 7
+  name              = local.ec2_log_group_name
+  retention_in_days = var.log_retention_days
 
   tags = {
-    Name        = "mailserver-mx-ec2-logs"
-    Environment = "production"
+    Name        = local.ec2_log_group_tag_name
+    Environment = var.environment
   }
 }
 
 # IAM Role for EC2 Instance
 resource "aws_iam_role" "ec2_mx_role" {
-  name = "mailserver-ec2-mx-role"
+  name = local.ec2_role_name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -372,14 +342,14 @@ resource "aws_iam_role" "ec2_mx_role" {
   })
 
   tags = {
-    Name        = "mailserver-ec2-mx-role"
-    Environment = "production"
+    Name        = local.ec2_role_name
+    Environment = var.environment
   }
 }
 
 # IAM Policy for Secrets Manager Access (Tailscale Auth Key)
 resource "aws_iam_role_policy" "ec2_secrets_policy" {
-  name = "mailserver-ec2-secrets-policy"
+  name = local.ec2_secrets_policy_name
   role = aws_iam_role.ec2_mx_role.id
 
   policy = jsonencode({
@@ -398,7 +368,7 @@ resource "aws_iam_role_policy" "ec2_secrets_policy" {
 
 # IAM Policy for CloudWatch Logs
 resource "aws_iam_role_policy" "ec2_cloudwatch_policy" {
-  name = "mailserver-ec2-cloudwatch-policy"
+  name = local.ec2_cloudwatch_policy_name
   role = aws_iam_role.ec2_mx_role.id
 
   policy = jsonencode({
@@ -420,12 +390,12 @@ resource "aws_iam_role_policy" "ec2_cloudwatch_policy" {
 
 # IAM Instance Profile
 resource "aws_iam_instance_profile" "ec2_mx_profile" {
-  name = "mailserver-ec2-mx-profile"
+  name = local.ec2_profile_name
   role = aws_iam_role.ec2_mx_role.name
 
   tags = {
-    Name        = "mailserver-ec2-mx-profile"
-    Environment = "production"
+    Name        = local.ec2_profile_name
+    Environment = var.environment
   }
 }
 
@@ -438,7 +408,8 @@ resource "aws_instance" "mailserver_mx" {
   associate_public_ip_address = true
   iam_instance_profile        = aws_iam_instance_profile.ec2_mx_profile.name
 
-  user_data = file("${path.module}/user_data.sh")
+  # Conditionally use staging or production user_data based on workspace
+  user_data = file("${path.module}/${local.user_data_filename}")
 
   root_block_device {
     volume_type = "gp3"
@@ -447,8 +418,8 @@ resource "aws_instance" "mailserver_mx" {
   }
 
   tags = {
-    Name        = "mailserver-mx-ec2"
-    Environment = "production"
+    Name        = local.ec2_instance_name
+    Environment = var.environment
     Purpose     = "MX Gateway with Tailscale"
   }
 }
@@ -457,100 +428,6 @@ resource "aws_instance" "mailserver_mx" {
 resource "aws_eip_association" "mailserver_eip_ec2" {
   instance_id   = aws_instance.mailserver_mx.id
   allocation_id = aws_eip.mailserver_eip.id
-}
-
-# ============================================================================
-# Outputs
-# ============================================================================
-
-output "vpc_id" {
-  description = "VPC ID for mail server infrastructure"
-  value       = aws_vpc.mailserver_vpc.id
-}
-
-output "vpc_cidr" {
-  description = "VPC CIDR block"
-  value       = aws_vpc.mailserver_vpc.cidr_block
-}
-
-output "internet_gateway_id" {
-  description = "Internet Gateway ID"
-  value       = aws_internet_gateway.mailserver_igw.id
-}
-
-output "public_subnet_1a_id" {
-  description = "Public subnet ID in ap-northeast-1a"
-  value       = aws_subnet.public_subnet_1a.id
-}
-
-output "public_subnet_1c_id" {
-  description = "Public subnet ID in ap-northeast-1c"
-  value       = aws_subnet.public_subnet_1c.id
-}
-
-output "route_table_id" {
-  description = "Public route table ID"
-  value       = aws_route_table.mailserver_public_rt.id
-}
-
-output "security_group_id" {
-  description = "Fargate security group ID"
-  value       = aws_security_group.fargate_sg.id
-}
-
-output "elastic_ip" {
-  description = "Elastic IP address for mail server"
-  value       = aws_eip.mailserver_eip.public_ip
-}
-
-output "elastic_ip_allocation_id" {
-  description = "Elastic IP allocation ID"
-  value       = aws_eip.mailserver_eip.id
-}
-
-output "ecs_cluster_name" {
-  description = "ECS cluster name"
-  value       = aws_ecs_cluster.mailserver_cluster.name
-}
-
-output "ecs_cluster_arn" {
-  description = "ECS cluster ARN"
-  value       = aws_ecs_cluster.mailserver_cluster.arn
-}
-
-output "cloudwatch_log_group_name" {
-  description = "CloudWatch Logs group name"
-  value       = aws_cloudwatch_log_group.ecs_mailserver_mx.name
-}
-
-output "execution_role_arn" {
-  description = "ECS task execution role ARN"
-  value       = aws_iam_role.execution_role.arn
-}
-
-output "task_role_arn" {
-  description = "ECS task role ARN"
-  value       = aws_iam_role.task_role.arn
-}
-
-output "ec2_instance_id" {
-  description = "EC2 MX Gateway instance ID"
-  value       = aws_instance.mailserver_mx.id
-}
-
-output "ec2_instance_public_ip" {
-  description = "EC2 MX Gateway public IP (Elastic IP)"
-  value       = aws_eip.mailserver_eip.public_ip
-}
-
-output "ec2_instance_private_ip" {
-  description = "EC2 MX Gateway private IP"
-  value       = aws_instance.mailserver_mx.private_ip
-}
-
-output "ec2_cloudwatch_log_group" {
-  description = "CloudWatch Logs group for EC2"
-  value       = aws_cloudwatch_log_group.ec2_mx_logs.name
 }
 
 # ============================================================================
