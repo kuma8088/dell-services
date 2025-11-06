@@ -1,0 +1,102 @@
+server {
+    listen 80;
+    server_name ${MAIL_HOSTNAME} admin.kuma8088.com;
+
+    # HTTPSへリダイレクト
+    location / {
+        return 301 https://${NGINX_DOLLAR}host${NGINX_DOLLAR}request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${MAIL_HOSTNAME};
+
+    # Tailscale HTTPS証明書
+    ssl_certificate ${TLS_CERT_FILE};
+    ssl_certificate_key ${TLS_KEY_FILE};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # セキュリティヘッダー
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # 管理サイトへのプロキシ（Tailscale IP制限）
+    location /admin {
+        # Tailscale IPアドレスのみ許可（100.64.0.0/10）
+        allow 100.64.0.0/10;
+        deny all;
+
+        proxy_pass http://172.20.0.90:5000;
+        proxy_set_header Host ${NGINX_DOLLAR}host;
+        proxy_set_header X-Real-IP ${NGINX_DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${NGINX_DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${NGINX_DOLLAR}scheme;
+
+        # タイムアウト設定
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+        proxy_read_timeout 300;
+    }
+
+    # Roundcubeへプロキシ
+    location / {
+        proxy_pass http://172.20.0.40:80;
+        proxy_set_header Host ${NGINX_DOLLAR}host;
+        proxy_set_header X-Real-IP ${NGINX_DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${NGINX_DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${NGINX_DOLLAR}scheme;
+
+        # タイムアウト設定
+        proxy_connect_timeout 600;
+        proxy_send_timeout 600;
+        proxy_read_timeout 600;
+        send_timeout 600;
+
+        # バッファ設定
+        client_max_body_size 25M;
+    }
+}
+
+# 管理サイト専用サーバー（admin.kuma8088.com）
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name admin.kuma8088.com;
+
+    # Tailscale HTTPS証明書（共有）
+    ssl_certificate ${TLS_CERT_FILE};
+    ssl_certificate_key ${TLS_KEY_FILE};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # セキュリティヘッダー
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Tailscale IPアドレスのみ許可（100.64.0.0/10）
+    allow 100.64.0.0/10;
+    deny all;
+
+    # 管理サイトへプロキシ
+    location / {
+        proxy_pass http://172.20.0.90:5000;
+        proxy_set_header Host ${NGINX_DOLLAR}host;
+        proxy_set_header X-Real-IP ${NGINX_DOLLAR}remote_addr;
+        proxy_set_header X-Forwarded-For ${NGINX_DOLLAR}proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto ${NGINX_DOLLAR}scheme;
+
+        # タイムアウト設定
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+        proxy_read_timeout 300;
+    }
+}
