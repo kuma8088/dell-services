@@ -1,4 +1,6 @@
-# version: '3.8'
+# Production mailserver stack definition.
+# Environment variables resolve from services/mailserver/.env only.
+# Staging overrides live in docker-compose.staging.yml with .env.staging.
 
 networks:
   mailserver_network:
@@ -46,6 +48,7 @@ services:
       mailserver_network:
         ipv4_address: 172.20.0.60
     environment:
+      # Source: services/mailserver/.env (production)
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MYSQL_USER=${MYSQL_USER}
@@ -72,6 +75,7 @@ services:
     ports:
       - "587:587"
     environment:
+      # Source: services/mailserver/.env (production)
       - HOSTNAME=${MAIL_HOSTNAME}
       - DOMAIN=${MAIL_DOMAIN}
       - TZ=${TZ}
@@ -118,6 +122,7 @@ services:
       - "993:993" # IMAPS
       - "995:995" # POP3S
     environment:
+      # Source: services/mailserver/.env (production)
       - TZ=${TZ}
     volumes:
       - ./config/dovecot:/etc/dovecot/custom
@@ -152,6 +157,7 @@ services:
       - ./config/rspamd:/etc/rspamd/override.d
       - ./logs/rspamd:/var/log/rspamd
     environment:
+      # Source: services/mailserver/.env (production)
       - TZ=${TZ}
     depends_on:
       - clamav
@@ -182,6 +188,7 @@ services:
       - ./config/clamav/freshclam.conf:/etc/clamav/freshclam.conf:ro
       - ./logs/clamav:/var/log/clamav
     environment:
+      # Source: services/mailserver/.env (production)
       - TZ=${TZ}
     deploy:
       resources:
@@ -205,6 +212,7 @@ services:
       mailserver_network:
         ipv4_address: 172.20.0.40
     environment:
+      # Source: services/mailserver/.env (production)
       - ROUNDCUBEMAIL_DB_TYPE=mysql
       - ROUNDCUBEMAIL_DB_HOST=mariadb
       - ROUNDCUBEMAIL_DB_NAME=${MYSQL_DATABASE}
@@ -248,6 +256,7 @@ services:
       mailserver_network:
         ipv4_address: 172.20.0.90
     environment:
+      # Source: services/mailserver/.env (production)
       - TZ=${TZ}
       - DB_HOST=${USERMGMT_DB_HOST}
       - DB_PORT=${USERMGMT_DB_PORT}
@@ -286,6 +295,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
+      # Source: services/mailserver/.env (production)
       - TZ=${TZ}
       - MAIL_HOSTNAME=${MAIL_HOSTNAME}
       - TLS_CERT_FILE=${POSTFIX_TLS_CERT_FILE:-/var/lib/tailscale/certs/tls.crt}

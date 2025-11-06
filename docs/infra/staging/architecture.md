@@ -1,5 +1,53 @@
 # Staging Environment Architecture
 
+## 📋 Terraform リファクタリング完了 (2025-11-06)
+
+### ✅ Terraform 構成の整理
+
+**目的**: 本番/Staging環境の明確な分離とコードの保守性向上
+
+**実施内容**:
+
+1. **Terraform ファイル分離**
+   - `main.tf`: リソース定義のみ
+   - `variables.tf`: 変数定義
+   - `outputs.tf`: 出力定義
+   - `locals.tf`: Workspace条件分岐（本番/Staging自動切り替え）
+
+2. **環境別変数ファイル作成**
+   - `production.tfvars`: 本番環境用（VPC: 10.0.0.0/16, Logs: 30日保持）
+   - `staging.tfvars`: Staging環境用（VPC: 10.1.0.0/16, Logs: 7日保持）
+
+3. **CloudWatch Logs 保持期間の明確化**
+   - **本番**: 30日保持（コンプライアンス対応）
+   - **Staging**: 7日保持（コスト削減）
+
+4. **Security Group 構成（本番・Staging共通）**
+   - Port 22 (SSH): インターネットから許可
+   - Port 25 (SMTP): メール受信用
+   - Port 587 (SMTP Submission): メール送信用
+   - Port 41641 (Tailscale UDP): VPN接続用
+   - 各ルールに説明（description）を追加
+
+5. **EC2 user_data の環境別分離**
+   - `user_data.sh`: 本番用（Dell Production Dovecot → Port 2525）
+   - `user_data_staging.sh`: Staging用（Dell Staging Dovecot → Port 3525）
+
+6. **Dell Staging LMTP ポート統一**
+   - 最終決定: **Port 3525**（Tailscale ACL設定で対応）
+   - EC2 Staging Postfix: `relay_transport = lmtp:[100.110.222.53]:3525`
+   - Dell Staging Dovecot: ホストポート 3525 で LMTP 受信
+
+### 🔍 Terraform Plan 検証結果
+
+**本番ワークスペース** (`terraform workspace select default`):
+- CloudWatch Logs: 7日 → 30日（保持期間の適正化）
+- Security Group: Port 22/587 に説明追加（in-place update）
+- EC2 Instance: user_data 更新（再起動不要、次回起動時に反映）
+
+**Staging ワークスペース** (`terraform workspace select staging`):
+- 差分なし（既に正しい状態）
+
 ## 📋 レビュー修正完了 (2025-11-06)
 
 本ドキュメントは以下のレビュー指摘に基づき修正済みです：
