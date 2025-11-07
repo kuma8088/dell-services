@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ **このファイルには詳細を書かない** - ドキュメントへのリンクのみ
 - ✅ **コマンド例を書かない** - 各README.mdに記載
 - ✅ **設定内容を書かない** - 各ドキュメントに記載
-- ✅ **150行以内に収める** - 簡潔さを維持
+- ✅ **30000文字以内に収める** - Claude効率的動作のため
 - ❌ **詳細情報の追加禁止** - 既存ドキュメントを参照させる
 
 **編集が必要な場合**:
@@ -74,16 +74,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **絶対禁止**: Port 22 の使用
 
 **現在の構成**: Dell/EC2ともにポート22以外を使用（セキュリティのため）
-
-**注**: 以下のセグメント別ポートはKVM仮想ネットワーク用（現在未使用）
-
-| セグメント | SSHポート範囲 | 状態 |
-|---------|-------------|------|
-| Management | 2201-2210 | 未使用 |
-| Public | 2211-2230 | 未使用 |
-| Private | 2231-2250 | 未使用 |
-| Database | 2251-2260 | 未使用 |
-| Container | 2261-2280 | 未使用 |
+**注**: KVM仮想ネットワーク用ポート範囲2201-2280は現在未使用
 
 ### 3. 認証情報の混同注意（Mailserver）
 
@@ -99,6 +90,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **実行前**: 前提条件・期待出力・ロールバック手順を確認
 - **実行中**: 結果を記録、期待値と異なる場合は停止
 - **実行後**: バリデーション実施、Git コミット
+
+### 5. コマンド提示のルール（コピペエラー防止）
+
+**問題**: 会話内のコマンド提示で意味のないインデントを入れると、コピペ時にエラーが発生
+
+**必須ルール - 会話内でのコマンド提示**:
+- ✅ **コードブロック内は必ず左詰め** (インデント・空白を入れない)
+- ✅ **長い複数行コマンドは `.md` ファイル化** (コピペミス防止)
+- ❌ **見た目のためのインデント禁止** (コマンドの一部として認識されエラー)
+
+**良い例（会話内）**:
+```bash
+cd /opt/project
+docker compose up -d
+```
+
+**悪い例（会話内）**:
+```bash
+    cd /opt/project
+    docker compose up -d
+```
+↑ コピペ時に先頭の空白がコマンドの一部として認識されエラー
+
+**長いコマンドの場合**:
+- `/tmp/script.sh` または `claudedocs/command.md` にファイル化
+- ファイルを Read ツールで読んでもらう、またはそのまま実行
+
+**理由**: ユーザーがコピペで即座に実行でき、余計な編集作業が不要
 
 ---
 
@@ -126,7 +145,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - EC2操作ガイド
 - Terraform運用
 
-### 3. トラブルシューティング
+### 3. バックアップシステム（Phase 10 + 11-B）
+
+**Phase 10 - ローカルバックアップ**:
+- **[docs/application/mailserver/backup/03_implementation.md](docs/application/mailserver/backup/03_implementation.md)**
+- TDD開発バックアップシステム（38テスト）
+- 日次/週次自動バックアップ（cron設定済み）
+- リストア手順（コンポーネント別復旧）
+- ログ: `~/.mailserver-backup.log`
+
+**Phase 11-B - S3オフサイトバックアップ** ✅ 完了:
+- **[docs/application/mailserver/backup/07_s3backup_implementation.md](docs/application/mailserver/backup/07_s3backup_implementation.md)**
+- Terraform IaC (S3 + IAM + CloudWatch + SNS)
+- Object Lock COMPLIANCE（ランサムウェア対策）
+- ClamAV + rkhunter マルウェアスキャン（3層防御）
+- コスト監視（10円/100円閾値）
+- ログ: `~/.s3-backup-cron.log`, `~/.scan-cron.log`
+
+### 4. トラブルシューティング
 
 **[services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)** - 問題発生時に必読
 
@@ -139,112 +175,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🌐 ネットワーク構成
+## 📂 重要ディレクトリ
 
-**現在の構成**: Dell/EC2ともにホストネットワークを直接使用
-
-**KVM仮想ネットワーク（構築済み、現在未使用）**:
-
-AWS VPC相当の5セグメント（libvirt type=nat + dnsmasq）:
-
-| セグメント | CIDR | Gateway | 状態 |
-|---------|------|---------|------|
-| Management | 10.0.0.0/24 | 10.0.0.1 | 未使用 |
-| Public | 10.0.1.0/24 | 10.0.1.1 | 未使用 |
-| Private | 10.0.2.0/24 | 10.0.2.1 | 未使用 |
-| Database | 10.0.3.0/24 | 10.0.3.1 | 未使用 |
-| Container | 10.0.4.0/24 | 10.0.4.1 | 未使用 |
-
-**注**: 将来的な仮想化用に構築済み。詳細: [docs/infra/README.md](docs/infra/README.md)
-
----
-
-## 📂 リポジトリ構造
-
-```
-project-root-infra/
-├── docs/
-│   ├── infra/                    # インフラ構築ドキュメント
-│   │   ├── README.md            # ★必読: インフラ全体ガイド
-│   │   ├── procedures/          # Phase別手順書
-│   │   └── *.md                 # 要件・設計ドキュメント
-│   └── application/
-│       └── mailserver/          # Mailserverドキュメント
-│           ├── README.md        # ★必読: Mailserverガイド
-│           ├── usermgmt/        # User Management (Phase 11/11-A)
-│           └── *.md             # 仕様書
-├── services/
-│   └── mailserver/              # Mailserver実装
-│       ├── README.md            # サービス構成とコマンド
-│       ├── docker-compose.yml   # Docker Compose構成
-│       ├── config/              # 設定ファイル
-│       ├── usermgmt/            # Flask User Management App
-│       ├── terraform/           # EC2 Terraform構成
-│       └── troubleshoot/        # トラブルシューティング
-│           └── README.md        # ★必読: 問題対処ガイド
-├── CLAUDE.md                    # 本ファイル
-└── README.md                    # プロジェクト概要
-```
-
----
-
-## 🔧 よく使うコマンド
-
-**詳細は各README.mdを参照してください。ここには記載しません。**
-
-- Docker操作 → [services/mailserver/README.md](services/mailserver/README.md)
-- EC2診断 → [services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)
-- テスト実行 → [docs/application/mailserver/usermgmt/DEVELOPMENT.md](docs/application/mailserver/usermgmt/DEVELOPMENT.md)
-- インフラ操作 → [docs/infra/README.md](docs/infra/README.md)
-
----
-
-## 🔒 セキュリティ原則
-
-- **SSH**: 公開鍵認証のみ、非標準ポート（2201-2280）、fail2ban保護
-- **Docker**: SELinux enforcing、非root、自動セキュリティ更新
-- **コンテナ**: デフォルト非特権、シークレット管理
-
-詳細: 各サービスのREADME.md参照
+- `docs/infra/` - インフラ構築ドキュメント
+- `docs/application/mailserver/` - Mailserver仕様・設計
+- `services/mailserver/` - 実装（config, scripts, terraform）
+  - `config/` - 各サービス設定（postfix, dovecot, nginx等）
+  - `scripts/` - 運用スクリプト（backup, restore, scan）
+  - `terraform/` - EC2 MX Gateway (IaC)
+  - `terraform-backup-s3/` - S3 Backup Infrastructure (IaC)
+  - `usermgmt/` - Flask User Management App
+- `services/mailserver/troubleshoot/` - トラブルシューティング
 
 ---
 
 ## ⚠️ よくある落とし穴
 
-| 問題 | 原因 | 対処先 |
-|-----|------|--------|
-| 認証失敗 | 認証情報混同（MYSQL_PASSWORD vs USERMGMT_DB_PASSWORD） | [troubleshoot/README.md](services/mailserver/troubleshoot/README.md) |
-| メール受信失敗 | EC2の relay_domains未登録 | [troubleshoot/README.md](services/mailserver/troubleshoot/README.md) |
-| Dockerコンテナ起動失敗 | ストレージ/パーミッション問題 | [docs/infra/README.md](docs/infra/README.md) |
-| リソース枯渇 | メモリ/CPU/ディスク不足 | [docs/infra/README.md](docs/infra/README.md) |
+- **認証失敗**: MYSQL_PASSWORD と USERMGMT_DB_PASSWORD の混同
+- **メール受信失敗**: EC2の relay_domains未登録
+- **コンテナ起動失敗**: ストレージ/パーミッション問題
 
-詳細なトラブルシューティング: [services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)
+詳細: [services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)
 
 ---
 
 ## 🌩️ 将来のAWS移行
 
-- **Terraform**: Dockerリソース/インフラをTerraform構成化
-- **AWS ECS/Fargate**: コンテナをAWSへ移行
-- **段階的移行**: 開発(Dell) → ステージング(AWS) → 本番(Multi-AZ)
-
-詳細: [docs/infra/README.md](docs/infra/README.md)
-
----
-
-## 📝 AI生成手順書ガイドライン
-
-本プロジェクトはAIツールで手順書を生成します：
-
-- **人間レビュー必須**: 実行前に検証
-- **バージョン管理**: Gitで追跡
-- **フィードバックループ**: 実行結果を記録
-- **安全性**: ロールバック手順必須
-
----
-
-**Repository Nature**: ドキュメント駆動型インフラリポジトリ
-**Main Deliverables**: 実行可能な手順書（Bashコマンド）
-**Validation**: 実際のインフラ上での実行
-
-**AGENTS.md Note**: AGENTS.mdは別プロジェクトの参照であり、本リポジトリとは無関係
+- 段階的移行: 開発(Dell) → ステージング(AWS) → 本番(Multi-AZ)
+- 詳細: [docs/infra/README.md](docs/infra/README.md)
