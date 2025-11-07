@@ -114,3 +114,4 @@ services/mailserver/docker-compose.yml.phase*.backup
 
 # Serena MCP configuration
 .serena/
+services/mailserver/config-staging/postfix/
