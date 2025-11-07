@@ -62,6 +62,69 @@
 
 **テスト所要時間**: 約2.5時間
 
+### 5. Phase 10: ローカルバックアップシステム
+
+#### [バックアップ実装ガイド (backup/03_implementation.md)](./backup/03_implementation.md)
+- TDD開発手法による38テスト実装
+- 日次/週次自動バックアップ（cron設定）
+- コンポーネント別バックアップ（メール、MySQL、設定）
+- リストア手順（完全復旧・部分復旧）
+- バックアップ検証・モニタリング
+
+**主要機能**:
+- ✅ 日次自動バックアップ（AM 3:00）
+- ✅ 週次自動バックアップ（日曜 AM 2:00）
+- ✅ チェックサム検証
+- ✅ コンポーネント別リストア
+- ✅ ログ記録（~/.mailserver-backup.log）
+
+**バックアップ先**: `/mnt/backup-hdd/mailserver/`
+
+### 6. Phase 11-B: S3オフサイトバックアップシステム
+
+#### [要件定義 (backup/05_s3backup_requirements.md)](./backup/05_s3backup_requirements.md)
+- ランサムウェア対策（S3 Object Lock COMPLIANCE）
+- コスト監視（2段階閾値: 10円WARNING / 100円CRITICAL）
+- 自動マルウェアスキャン（ClamAV + rkhunter）
+- IAM最小権限設計
+
+#### [設計書 (backup/06_s3backup_design.md)](./backup/06_s3backup_design.md)
+- S3バケット設計（Versioning + Object Lock）
+- Terraform構成（S3, IAM, CloudWatch, SNS）
+- マルウェアスキャン設計（3層防御）
+- ライフサイクル管理（30d STANDARD → 60d GLACIER → 90d DELETE）
+
+#### [実装ガイド (backup/07_s3backup_implementation.md)](./backup/07_s3backup_implementation.md)
+- Terraform実装（S3インフラ構築）
+- マルウェアスキャン環境構築
+- バックアップスクリプト実装（4スクリプト）
+- cron自動実行設定
+- 動作確認・トラブルシューティング
+
+**主要機能**:
+- ✅ S3日次レプリケーション（AM 4:00）
+- ✅ Object Lock（30日間削除不可）
+- ✅ 日次マルウェアスキャン（AM 5:00）
+- ✅ コスト監視アラート（CloudWatch + SNS）
+- ✅ リストア前マルウェアスキャン
+
+**実装所要時間**: 約3-4時間
+
+#### [リカバリー手順書 (backup/08_recovery_procedures.md)](./backup/08_recovery_procedures.md)
+- Githubからのインフラ復旧（IaC復旧）
+- S3からのデータ復旧（メール・DB復旧）
+- 完全障害からの復旧（Github + S3）
+- 部分復旧（コンポーネント別）
+- 検証手順・トラブルシューティング
+
+**復旧シナリオ**:
+- ✅ シナリオ1: Githubからのインフラ復旧（RTO: 2時間）
+- ✅ シナリオ2: S3からのデータ復旧（RTO: 1時間、RPO: 24時間）
+- ✅ シナリオ3: 完全障害からの復旧（RTO: 4時間、RPO: 24時間）
+- ✅ シナリオ4: 部分復旧（RTO: 30分、RPO: 24時間）
+
+**復旧所要時間**: 30分〜4時間（障害レベルによる）
+
 ---
 
 ## 🚀 クイックスタート
