@@ -2873,3 +2873,181 @@ docker run --rm \
 **作成者**: Claude
 
 **次のステップ**: [05_testing.md](05_testing.md) - テスト計画書作成
+
+---
+
+### 問題 7: プラグインインストール時のFTPエラー
+
+**症状**: 
+- プラグインやテーマをWordPress管理画面からインストールしようとすると「FTP接続情報を入力してください」と表示される
+- All-in-One WP Migrationプラグインがファイル作成権限エラーを出す
+
+**原因**: 
+WordPressがファイルシステムへの直接アクセス権限を持っていない（デフォルトはFTP/FTPS経由を想定）
+
+**対処法**:
+
+#### 1. wp-config.phpに`FS_METHOD`を設定
+
+**方法A: WP-CLI経由（推奨）**
+```bash
+docker compose exec wordpress wp config set FS_METHOD direct --raw \
+  --path=/var/www/html/<site-name> \
+  --allow-root
+```
+
+**方法B: 手動編集**
+```bash
+# wp-config.phpを編集して以下を追加（`/* That's all, stop editing! */`の前）
+docker compose exec wordpress bash -c "cat >> /var/www/html/<site-name>/wp-config.php << 'WPEOF'
+
+define('FS_METHOD', 'direct');
+WPEOF
+"
+```
+
+#### 2. ディレクトリ権限の確認と修正
+
+```bash
+# wp-content全体の所有権をwww-dataに変更
+docker compose exec wordpress chown -R www-data:www-data \
+  /var/www/html/<site-name>/wp-content
+
+# ディレクトリ権限: 755
+docker compose exec wordpress find /var/www/html/<site-name>/wp-content \
+  -type d -exec chmod 755 {} \;
+
+# ファイル権限: 644
+docker compose exec wordpress find /var/www/html/<site-name>/wp-content \
+  -type f -exec chmod 644 {} \;
+```
+
+#### 3. All-in-One WP Migration用の特定ディレクトリ作成
+
+```bash
+# 必要なディレクトリを事前作成
+docker compose exec wordpress bash -c "
+cd /var/www/html/<site-name> &&
+mkdir -p wp-content/ai1wm-backups &&
+mkdir -p wp-content/plugins/all-in-one-wp-migration/storage &&
+chown -R www-data:www-data wp-content/ai1wm-backups &&
+chown -R www-data:www-data wp-content/plugins/all-in-one-wp-migration/storage
+"
+```
+
+#### 4. プラグイン再有効化
+
+```bash
+# プラグインを再有効化して保護ファイルを作成
+docker compose exec wordpress wp plugin deactivate all-in-one-wp-migration \
+  --path=/var/www/html/<site-name> --allow-root
+docker compose exec wordpress wp plugin activate all-in-one-wp-migration \
+  --path=/var/www/html/<site-name> --allow-root
+```
+
+**検証**:
+- WordPress管理画面 → プラグイン → 新規追加 → 任意のプラグインをインストール
+- FTP情報を求められず、インストールが完了すればOK
+
+**注意点**:
+- `FS_METHOD direct`はDocker環境では標準的な設定
+- セキュリティ的にも問題なし（コンテナ内でのみ動作）
+- すべての新規サイトで初期セットアップ時に設定すべき
+
+---
+
+### 問題 8: 移行後の静的ファイル404エラー（CSS/JS/画像）
+
+**症状**: 
+- ページHTMLは表示されるが、CSS/JS/画像が404エラー
+- ブラウザコンソールに大量の404エラー
+
+**原因**:
+- データベース内のURL設定（`siteurl`/`home`）は正しいが、`wp_posts.guid`に旧ドメインが残っている
+- WordPressがguid列を参照してメディアURLを生成している
+
+**対処法**:
+
+#### 確認コマンド
+```bash
+# guidに旧ドメインがあるか確認
+docker compose exec mariadb mysql -uroot -p'${MYSQL_ROOT_PASSWORD}' \
+  <database-name> \
+  -e "SELECT COUNT(*) FROM wp_posts WHERE guid LIKE '%old-domain%';"
+```
+
+#### 修正コマンド（wp-cli search-replace）
+```bash
+# ドライラン（実行前確認）
+docker compose exec wordpress wp search-replace \
+  'old-domain.com/subdirectory' \
+  'new-domain.com/subdirectory' \
+  --dry-run \
+  --path=/var/www/html/<site-name> \
+  --allow-root
+
+# 実行（guidは通常スキップ推奨だが、移行では置換必要）
+docker compose exec wordpress wp search-replace \
+  'old-domain.com/subdirectory' \
+  'new-domain.com/subdirectory' \
+  --path=/var/www/html/<site-name> \
+  --allow-root
+```
+
+**注意**:
+- `guid`はWordPress内部IDなので通常は変更しないが、ドメイン完全移行時は必要
+- プロトコル（http/https）も含めて正確に指定すること
+
+---
+
+**更新日**: 2025-11-10  
+**バージョン**: 1.1  
+**更新内容**: FTP問題・静的ファイル404問題のトラブルシューティング追加
+
+
+#### 補足: FS_METHOD設定時の注意点
+
+**⚠️ 重要**: `wp config set`で`--raw`フラグを使うとクォートが抜けて500エラーになります。
+
+**誤った方法（500エラー発生）**:
+```bash
+# ❌ --raw フラグを使うとクォートが抜ける
+docker compose exec wordpress wp config set FS_METHOD direct --raw \
+  --path=/var/www/html/<site-name> --allow-root
+# 結果: define( 'FS_METHOD', direct ); ← クォートなしでPHPエラー
+```
+
+**正しい方法**:
+```bash
+# ✅ 方法1: --rawなしで実行
+docker compose exec wordpress wp config set FS_METHOD direct \
+  --path=/var/www/html/<site-name> --allow-root
+# 結果: define('FS_METHOD', 'direct'); ← 正しい
+
+# ✅ 方法2: 手動でwp-config.phpに追記（最も確実）
+docker compose exec wordpress bash -c "
+grep -q 'FS_METHOD' /var/www/html/<site-name>/wp-config.php || \
+sed -i \"/That's all, stop editing/i define('FS_METHOD', 'direct');\n\" \
+/var/www/html/<site-name>/wp-config.php
+"
+```
+
+**既に500エラーになっている場合の修正**:
+```bash
+# クォートを追加して修正
+docker compose exec wordpress sed -i \
+  "s/define( 'FS_METHOD', direct );/define('FS_METHOD', 'direct');/" \
+  /var/www/html/<site-name>/wp-config.php
+
+# 修正確認
+docker compose exec wordpress grep "FS_METHOD" /var/www/html/<site-name>/wp-config.php
+# 期待出力: define('FS_METHOD', 'direct');
+```
+
+**エラーログ確認**:
+```bash
+# PHP Fatal errorを確認
+docker compose logs wordpress --tail 50 | grep "Fatal error"
+# 出力例: PHP Fatal error: Uncaught Error: Undefined constant "direct"
+```
+

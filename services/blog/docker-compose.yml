@@ -10,6 +10,9 @@ networks:
       config:
         - subnet: 172.22.0.0/24
           gateway: 172.22.0.1
+  mailserver_network:
+    external: true
+    name: mailserver_mailserver_network
 
 volumes:
   blog_db_data:
@@ -80,13 +83,19 @@ services:
 
   # WordPress (PHP-FPM)
   wordpress:
-    image: wordpress:php8.3-fpm-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blog-wordpress:custom
     container_name: blog-wordpress
     hostname: wordpress
     restart: always
     networks:
       blog_network:
         ipv4_address: 172.22.0.30
+      mailserver_network:
+    extra_hosts:
+      - "dell-workstation.tail67811d.ts.net:172.20.0.20"
     environment:
       - TZ=${TZ:-Asia/Tokyo}
       - WORDPRESS_DB_HOST=mariadb:3306
@@ -95,6 +104,7 @@ services:
     volumes:
       - blog_wordpress_sites:/var/www/html
       - ./config/php/php.ini:/usr/local/etc/php/conf.d/custom.ini:ro
+      - ./config/php/https-fix.php:/usr/local/etc/php/conf.d/https-fix.php:ro
       - blog_logs:/var/log/php
     depends_on:
       - mariadb

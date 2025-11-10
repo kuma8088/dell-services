@@ -23,6 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **詳細情報の追加先**:
 - インフラ関連 → [docs/infra/README.md](docs/infra/README.md)
 - Mailserver関連 → [docs/application/mailserver/README.md](docs/application/mailserver/README.md)
+- Blog関連 → [docs/application/blog/README.md](docs/application/blog/README.md)
 - トラブルシューティング → [services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)
 
 ---
@@ -31,7 +32,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **リポジトリタイプ**: ドキュメント駆動型インフラリポジトリ
 
-**目的**: Dell WorkStation (Rocky Linux 9.6) 上でDocker環境を構築し、Mailserverを稼働
+**目的**: Dell WorkStation (Rocky Linux 9.6) 上でDocker環境を構築し、Mailserver・Blog Systemを稼働
 
 **特徴**:
 - 実行可能な手順書を管理（アプリケーションコードは含まない）
@@ -39,9 +40,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 将来的なAWS移行を想定
 
 **現在の構成**:
-- ✅ Dell: Docker Compose環境（Postfix, Dovecot, MariaDB等のMailserver稼働中）
+- ✅ Dell: Docker Compose環境
+  - Mailserver（8コンテナ: Postfix, Dovecot, MariaDB等）
+  - Blog System（4コンテナ: WordPress, Nginx, MariaDB, Cloudflared - **16サイト**）
 - ✅ EC2: **PostfixがDockerコンテナで稼働**（MX Gateway）
 - 📝 KVM環境: 構築済みだが現在未使用（将来的な仮想化用）
+
+**最新の統合**（2025-11-10完了）:
+- ✅ WordPress → Mailserver SMTP連携（全16サイト）
+- ✅ SPF/DKIM認証によるメール配信改善
 
 **重要:** Dell側・EC2側ともにPostfixはDockerコンテナで稼働しています。systemd/journalctlベースのコマンドではなく、`docker logs`/`docker exec`を使用してください。
 
@@ -162,7 +169,19 @@ docker compose up -d
 - コスト監視（10円/100円閾値）
 - ログ: `~/.s3-backup-cron.log`, `~/.scan-cron.log`
 
-### 4. トラブルシューティング
+### 4. Blog Systemドキュメント
+
+**[docs/application/blog/README.md](docs/application/blog/README.md)** - Blog作業時に必読
+
+**内容**:
+- 16 WordPress サイト構成（Phase A-1完了）
+- Cloudflare Tunnel設定（14 Public Hostnames）
+- Docker Compose環境（4コンテナ）
+- WordPress → Mailserver SMTP連携（Phase A-1完了）
+- 既知の問題（Phase 011: サブディレクトリ表示問題、Elementor、PHP互換性）
+- wp-cli操作、URL置換手順
+
+### 5. トラブルシューティング
 
 **[services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)** - 問題発生時に必読
 
@@ -179,23 +198,39 @@ docker compose up -d
 
 - `docs/infra/` - インフラ構築ドキュメント
 - `docs/application/mailserver/` - Mailserver仕様・設計
-- `services/mailserver/` - 実装（config, scripts, terraform）
+- `docs/application/blog/` - Blog System仕様・設計
+- `services/mailserver/` - Mailserver実装（config, scripts, terraform）
   - `config/` - 各サービス設定（postfix, dovecot, nginx等）
   - `scripts/` - 運用スクリプト（backup, restore, scan）
   - `terraform/` - EC2 MX Gateway (IaC)
   - `terraform/s3-backup/` - S3 Backup Infrastructure (IaC)
   - `usermgmt/` - Flask User Management App
-- `services/mailserver/troubleshoot/` - トラブルシューティング
+  - `troubleshoot/` - トラブルシューティング
+- `services/blog/` - Blog System実装（config, docker-compose）
+  - `config/nginx/conf.d/` - 5つの仮想ホスト設定（kuma8088.conf他）
+  - `config/mariadb/init/` - 16データベース初期化
+  - `config/wordpress/` - PHP設定、WP Mail SMTP設定
+  - `config/cloudflared/` - Cloudflare Tunnel設定
+- `claudedocs/` - Claude作業成果物（分析レポート、設定記録）
 
 ## 🔧 よく使うコマンド
 
-### Docker操作
+### Docker操作（Mailserver）
 ```bash
 cd /opt/onprem-infra-system/project-root-infra/services/mailserver
 docker compose ps
 docker compose logs -f postfix
 docker compose restart <service>
 docker compose exec postfix bash
+```
+
+### Docker操作（Blog）
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/blog
+docker compose ps
+docker compose logs -f wordpress
+docker compose restart <service>
+docker compose exec wordpress bash
 ```
 
 ### バックアップ確認
@@ -218,11 +253,26 @@ terraform output
 
 ## ⚠️ よくある落とし穴
 
+### Mailserver
 - **認証失敗**: MYSQL_PASSWORD と USERMGMT_DB_PASSWORD の混同
 - **メール受信失敗**: EC2の relay_domains未登録
 - **コンテナ起動失敗**: ストレージ/パーミッション問題
 
 詳細: [services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)
+
+### Blog System
+- **Phase 011 - kuma8088.com表示問題** ⚠️ 起票済み:
+  - **症状**: blog.kuma8088.com配下10サイトでElementorプレビュー/静的ファイル404
+  - **根本原因**: Cloudflare HTTPS検出が**欠落**（他ドメインには存在）
+  - **影響**: WordPress HTTP判定 → Elementor HTTP URL生成 → 混在コンテンツエラー
+  - **解決策**: kuma8088.confに `fastcgi_param HTTPS on;` 追加（8箇所）
+  - 詳細: [docs/application/blog/phase-011-subdirectory-display-issue.md](docs/application/blog/phase-011-subdirectory-display-issue.md)
+- **Nginxサブディレクトリ404**: alias設定とSCRIPT_FILENAMEの誤設定
+- **wp-config.php編集失敗**: 所有者82:82 (www-data) への変更必要
+- **画像表示問題**: Elementorキャッシュクリアが必要
+- **PHP非互換**: create_function()等の非推奨関数がPHP 8.xでエラー
+
+詳細: [docs/application/blog/README.md](docs/application/blog/README.md)
 
 ---
 
