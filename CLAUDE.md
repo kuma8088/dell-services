@@ -76,12 +76,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. 現在の設定確認: `docker compose config`
 3. テスト環境で検証 → 本番適用
 
-### 2. SSH ポート設定
+### 2. SSH セキュリティ設定
 
-**絶対禁止**: Port 22 の使用
+**必須設定**:
+- パスワード認証無効（`PasswordAuthentication no`）
+- 公開鍵認証のみ使用
+- root直接ログイン禁止
 
-**現在の構成**: Dell/EC2ともにポート22以外を使用（セキュリティのため）
-**注**: KVM仮想ネットワーク用ポート範囲2201-2280は現在未使用
+**現在の構成**:
+- Dell/EC2ともに公開鍵認証のみ有効
+- Defense in Depth（多層防御）により保護
+- KVM仮想ネットワーク用ポート範囲2201-2280は現在未使用
 
 ### 3. 認証情報の混同注意（Mailserver）
 
