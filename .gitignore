@@ -78,10 +78,7 @@ services/mailserver/config/dovecot/dovecot-sql.conf.ext
 services/mailserver/data-staging/
 services/mailserver/logs-staging/
 services/mailserver/.env.staging
-services/mailserver/config-staging/postfix/sasl_passwd
-services/mailserver/config-staging/postfix/sasl_passwd.db
-services/mailserver/config-staging/dovecot/users
-services/mailserver/config-staging/dovecot/dovecot-sql.conf.ext
+services/mailserver/config-staging/
 
 # Terraform artifacts
 services/mailserver/terraform/*.tfplan
@@ -100,7 +97,6 @@ services/mailserver/docker-compose.yml.phase*.backup
 
 # Serena MCP configuration
 .serena/
-services/mailserver/config-staging/postfix/
 
 # Blog project sensitive files (NEVER commit these)
 docs/application/blog/claudedocs/xserver-credentials.env

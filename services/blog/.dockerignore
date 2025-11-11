@@ -1,0 +1,44 @@
+# Git metadata
+.git
+.gitignore
+.gitattributes
+
+# Environment files (secrets)
+.env
+.env.*
+
+# Documentation
+docs/
+README.md
+*.md
+
+# Terraform artifacts
+.terraform/
+terraform.tfstate*
+*.tfplan
+*.tfvars
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+
+# Logs
+*.log
+logs/
+
+# Testing artifacts
+tests/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
