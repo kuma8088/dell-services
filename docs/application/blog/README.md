@@ -21,7 +21,7 @@
 | [04_migration.md](./04_migration.md) | Xserver移行手順書 | ✅ 完了 |
 | [phase-a1-bulk-migration.md](./phase-a1-bulk-migration.md) | Phase A-1 一括移行実装 | ✅ 完了 |
 | [cloudflare-tunnel-hostnames.md](./cloudflare-tunnel-hostnames.md) | Cloudflare Tunnel設定 | ✅ 完了 |
-| [phase-011-subdirectory-display-issue.md](./phase-011-subdirectory-display-issue.md) | **Phase 011** サブディレクトリ表示問題 | 📝 起票済み |
+| [phase-011-subdirectory-display-issue.md](./issue/active/P011-subdirectory-display-issue.md) | **Phase 011** サブディレクトリ表示問題 | 📝 起票済み |
 | 05_testing.md | テスト計画書 | 📝 未作成 |
 
 ---
@@ -110,19 +110,19 @@ blog_network (Docker Bridge)
    - ポート: 8080 (HTTP内部)、3307 (MariaDB内部)
    - ネットワーク: `blog_network`（Mailserverと分離）
 
-2. **WordPress 15サイト移行**
-   - データベース: 15 DB インポート完了
+2. **WordPress 16サイト移行**
+   - データベース: 16 DB インポート完了
    - ファイル: 95GB rsync完了
    - 設定: wp-config.php 一括修正完了
    - URL置換: 8,700+ 置換完了（`https://domain.com` → `http://blog.domain.com`）
 
 3. **Nginx設定**
    - 5仮想ホスト設定完了
-   - 14サイト対応（ルート4 + サブディレクトリ10）
+   - 16サイト対応（ルート5 + サブディレクトリ11）
    - alias設定修正済み
 
 4. **Cloudflare Tunnel設定**
-   - 14 Public Hostnames登録完了
+   - 5 Public Hostnames登録完了（16 WordPress installations）
    - HTTPS自動証明書発行済み
    - DNS自動作成済み
 
@@ -175,7 +175,7 @@ blog_network (Docker Bridge)
   1. Nginxサブディレクトリルーティング方式（1ドメイン多サイト）
   2. 絶対URL混在（旧ドメインgwpbk492.xsrv.jp残存）
   3. Cloudflare Tunnel WAF/Bot Fight Modeによるブロッキング
-- **対処**: 📝 [phase-011-subdirectory-display-issue.md](./phase-011-subdirectory-display-issue.md) 参照
+- **対処**: 📝 [phase-011-subdirectory-display-issue.md](./issue/active/P011-subdirectory-display-issue.md) 参照
 - **推奨解決策**: 独立サブドメイン化（elementordemo1.kuma8088.com等）
 - **優先度**: 🔴 HIGH（10サイト影響、編集機能使用不可）
 
