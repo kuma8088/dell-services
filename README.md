@@ -18,7 +18,7 @@
 
 **Mailserver**: Xserver WEBメール相当の機能を持つメールサーバーを、オンプレミス環境（Dell WorkStation）とAWS EC2を組み合わせたハイブリッドクラウド構成で構築。実運用を想定したセキュリティ、バックアップ、監視、復旧手順を完備。
 
-**Blog System**: Xserver上の15サイト（95GB）をDell WorkStation + Cloudflare Tunnelへ移植。コスト削減とデータ主権確保を実現。
+**Blog System**: Xserver上の16 WordPressサイト（95GB）をDell WorkStation + Cloudflare Tunnelへ移植。コスト削減とデータ主権確保を実現。
 
 ### 🏗️ アーキテクチャ概要
 
@@ -59,11 +59,11 @@
 │   ┌─── Blog System (4 Containers) ───────────────────────┐       │
 │   │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
 │   │  │WordPress │  │  Nginx   │  │ MariaDB  │          │       │
-│   │  │ (PHP-FPM)│  │ (Proxy)  │  │ (15 DBs) │          │       │
+│   │  │ (PHP-FPM)│  │ (Proxy)  │  │ (16 DBs) │          │       │
 │   │  └──────────┘  └──────────┘  └──────────┘          │       │
 │   │  ┌──────────┐                                        │       │
 │   │  │cloudflared│ ←────────────────────────────────────┘       │
-│   │  └──────────┘  (14 Sites: 4 Root + 10 Subdirectory) │       │
+│   │  └──────────┘  (16 WordPress Sites via 5 Domains)   │       │
 │   └────────────────────────────────────────────────────┘       │
 │                                                                    │
 │   Storage: SSD 50GB (DBs/Logs) + HDD 3.6TB (Mail/Blog/Backups)  │
@@ -357,7 +357,7 @@ logs/
 │   └── config/                             # 設定ファイル
 │       ├── nginx/                          # Nginx設定（5仮想ホスト）
 │       ├── php/                            # PHP-FPM設定
-│       └── mariadb/                        # MariaDB設定（15 DBs）
+│       └── mariadb/                        # MariaDB設定（16 DBs）
 └── README.md                               # 本ファイル（プロジェクト概要）
 ```
 
@@ -409,13 +409,14 @@ logs/
 
 ### **Phase A-1: Blog System構築** ✅ 完了 (2025-11-09)
 - **Docker Compose環境**: nginx, wordpress, mariadb, cloudflared (4コンテナ)
-- **WordPress 15サイト移行**: 95GB データ + DB完了
-- **Cloudflare Tunnel**: 14 Public Hostnames設定済み
-- **動作確認**: 11/14サイト正常動作、2サイト既知の問題（後回し）
+- **WordPress 16サイト移行**: 95GB データ + DB完了
+- **Cloudflare Tunnel**: 5 Public Hostnames（16 WordPress installations）設定済み
+- **動作確認**: 13/16サイト正常動作、3サイト既知の問題（後回し）
 
-### **Phase A-2: Blog Backup** 📝 予定
-- バックアップスクリプト作成
-- Phase 11-B S3統合検討
+### **Phase A-2: Blog Backup** 📋 計画中
+- 要件定義中（詳細: [docs/application/blog/README.md - Section: バックアップ仕様](docs/application/blog/README.md#-バックアップ仕様phase-a-2予定)）
+- Mailserver Phase 11-Bバックアップシステムとの統合を検討
+- 16 WordPress サイト対応のバックアップスクリプト設計
 
 ---
 

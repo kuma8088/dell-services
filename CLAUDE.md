@@ -192,7 +192,7 @@ docker compose up -d
 
 **内容**:
 - 16 WordPress サイト構成（Phase A-1完了）
-- Cloudflare Tunnel設定（14 Public Hostnames）
+- Cloudflare Tunnel設定（5 Public Hostnames - 16 WordPress installations）
 - Docker Compose環境（4コンテナ）
 - WordPress → Mailserver SMTP連携（Phase A-1完了）
 - 既知の問題（Phase 011: サブディレクトリ表示問題、Elementor、PHP互換性）

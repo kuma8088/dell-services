@@ -1,0 +1,57 @@
+# Git metadata
+.git
+.gitignore
+.gitattributes
+
+# Backup files
+*.backup
+*.bak
+*.swp
+*.swo
+
+# Environment files (secrets)
+.env
+.env.*
+
+# Logs
+*.log
+logs/
+
+# Documentation
+docs/
+README.md
+*.md
+
+# Terraform artifacts
+.terraform/
+terraform.tfstate*
+*.tfplan
+*.tfvars
+
+# Testing artifacts
+tests/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+.coverage
+htmlcov/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime data (should be in volumes)
+data/
+data-staging/
+logs-staging/
+backups/
+
+# Config staging
+config-staging/
