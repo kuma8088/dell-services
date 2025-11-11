@@ -61,6 +61,10 @@
   - 04: マイグレーション
   - 05: テスト
 - **Cloudflare Tunnel:** [cloudflare-tunnel-hostnames.md](/docs/application/blog/cloudflare-tunnel-hostnames.md)
+- **WP Mail SMTP自動設定:**
+  - セットアップガイド: [guides/WP-MAIL-SMTP-SETUP.md](/docs/application/blog/guides/WP-MAIL-SMTP-SETUP.md)
+  - 新規サイト作成: [/services/blog/scripts/create-new-wp-site.sh](/services/blog/scripts/create-new-wp-site.sh)
+  - ポータル統合設計: [design/portal-integration-design.md](/docs/application/blog/design/portal-integration-design.md)
 
 ## 🛠️ Implementation
 
@@ -93,6 +97,11 @@
   - mariadb/init/ - 16データベース初期化
   - wordpress/ - PHP設定、WP Mail SMTP設定
   - cloudflared/ - Cloudflare Tunnel設定
+- `scripts/` - 運用スクリプト
+  - create-new-wp-site.sh - 新規サイト作成自動化 ✨
+  - setup-wp-mail-smtp.sh - WP Mail SMTP一括設定
+  - check-wp-mail-smtp.sh - SMTP設定確認
+  - generate-nginx-subdirectories.sh - Nginx設定生成
 - `servers/` - サーバー別設定
 
 ## 📝 Work Notes
@@ -120,9 +129,14 @@
 - 変更後は必ず `docker compose restart <service>` を実行
 
 **スクリプト実行:**
-- バックアップ: `/services/mailserver/scripts/backup-*.sh`
-- S3同期: `/services/mailserver/scripts/backup-to-s3.sh`
-- マルウェアスキャン: `/services/mailserver/scripts/scan-mailserver.sh`
+- **Mailserver:**
+  - バックアップ: `/services/mailserver/scripts/backup-*.sh`
+  - S3同期: `/services/mailserver/scripts/backup-to-s3.sh`
+  - マルウェアスキャン: `/services/mailserver/scripts/scan-mailserver.sh`
+- **Blog:**
+  - 新規サイト作成: `/services/blog/scripts/create-new-wp-site.sh` ✨
+  - WP Mail SMTP設定: `/services/blog/scripts/setup-wp-mail-smtp.sh`
+  - SMTP設定確認: `/services/blog/scripts/check-wp-mail-smtp.sh`
 
 **IaC操作:**
 - EC2 MX Gateway: `/services/mailserver/terraform/`

@@ -201,6 +201,16 @@ docker compose up -d
 - 既知の問題（Phase 011: サブディレクトリ表示問題、Elementor、PHP互換性）
 - wp-cli操作、URL置換手順
 
+**新規サイト作成自動化** ✨ NEW (2025-11-11):
+- **[guides/WP-MAIL-SMTP-SETUP.md](docs/application/blog/guides/WP-MAIL-SMTP-SETUP.md)** - WP Mail SMTP一括設定ガイド
+- **[services/blog/scripts/create-new-wp-site.sh](services/blog/scripts/create-new-wp-site.sh)** - 新規サイト作成ウィザード（対話式）
+  - データベース作成
+  - WordPress自動インストール
+  - WP Mail SMTP自動設定
+  - Nginx/Cloudflare設定ガイダンス
+- **[services/blog/scripts/QUICKSTART.md](services/blog/scripts/QUICKSTART.md)** - 5分クイックスタート
+- **[design/portal-integration-design.md](docs/application/blog/design/portal-integration-design.md)** - 将来の管理ポータル統合設計
+
 ### 5. トラブルシューティング
 
 **[services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)** - 問題発生時に必読
@@ -238,11 +248,16 @@ docker compose up -d
   - `terraform/s3-backup/` - S3 Backup Infrastructure (IaC)
   - `usermgmt/` - Flask User Management App
   - `troubleshoot/` - トラブルシューティング
-- `services/blog/` - Blog System実装（config, docker-compose）
+- `services/blog/` - Blog System実装（config, docker-compose, scripts）
   - `config/nginx/conf.d/` - 5つの仮想ホスト設定（kuma8088.conf他）
   - `config/mariadb/init/` - 16データベース初期化
   - `config/wordpress/` - PHP設定、WP Mail SMTP設定
   - `config/cloudflared/` - Cloudflare Tunnel設定
+  - `scripts/` - 運用スクリプト ✨ NEW
+    - `create-new-wp-site.sh` - 新規サイト作成ウィザード（自動化）
+    - `setup-wp-mail-smtp.sh` - WP Mail SMTP一括設定
+    - `check-wp-mail-smtp.sh` - SMTP設定確認
+    - `generate-nginx-subdirectories.sh` - Nginx設定生成
 
 ## 🔧 よく使うコマンド
 
@@ -262,6 +277,35 @@ docker compose ps
 docker compose logs -f wordpress
 docker compose restart <service>
 docker compose exec wordpress bash
+```
+
+### 新規サイト作成（Blog）✨ NEW
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/blog
+
+# 対話式ウィザードで新規サイト作成（推奨）
+./scripts/create-new-wp-site.sh
+
+# WordPress自動インストール + WP Mail SMTP自動設定 + ガイダンス表示
+# 実行後: Nginx設定追加 → Cloudflare Tunnel設定更新
+```
+
+### WP Mail SMTP設定（Blog）
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/blog
+
+# 全16サイトの設定状況確認
+./scripts/check-wp-mail-smtp.sh
+
+# 全サイト一括設定（初回のみ）
+./scripts/setup-wp-mail-smtp.sh --dry-run  # プレビュー
+./scripts/setup-wp-mail-smtp.sh             # 実行
+
+# 単一サイト設定（新規サイト追加時）
+./scripts/setup-wp-mail-smtp.sh --site kuma8088-new-site blog.kuma8088.com/new-site noreply@kuma8088.com
+
+# テストメール送信
+./scripts/setup-wp-mail-smtp.sh --test-email your-email@example.com
 ```
 
 ### Nginx設定生成（Blog）
