@@ -48,9 +48,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ EC2: **PostfixがDockerコンテナで稼働**（MX Gateway）
 - 📝 KVM環境: 構築済みだが現在未使用（将来的な仮想化用）
 
-**最新の統合**（2025-11-10完了）:
+**最新の統合・改善**（2025-11-11完了）:
 - ✅ WordPress → Mailserver SMTP連携（全16サイト）
 - ✅ SPF/DKIM認証によるメール配信改善
+- ✅ Nginx HTTPS検出パラメータ追加（Elementor jQuery 404エラー解消）
+- ✅ Nginx設定の自動生成化（247行→55行、78%削減）
+- ✅ バックアップ/リストアスクリプトの堅牢性向上（preflight checks + dry-run）
 
 **重要:** Dell側・EC2側ともにPostfixはDockerコンテナで稼働しています。systemd/journalctlベースのコマンドではなく、`docker logs`/`docker exec`を使用してください。
 
@@ -261,12 +264,38 @@ docker compose restart <service>
 docker compose exec wordpress bash
 ```
 
+### Nginx設定生成（Blog）
+```bash
+# サブディレクトリサイトの設定を自動生成
+cd /opt/onprem-infra-system/project-root-infra/services/blog
+./scripts/generate-nginx-subdirectories.sh > config/nginx/conf.d/kuma8088-subdirs-generated.inc
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
+```
+
 ### バックアップ確認
 ```bash
 tail -f ~/.mailserver-backup.log
 tail -f ~/.s3-backup-cron.log
 tail -f ~/.scan-cron.log
 ls -lah /mnt/backup-hdd/mailserver/daily/
+```
+
+### リストア操作（Mailserver）
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/mailserver
+
+# Dry-runで事前確認（実際には実行しない）
+./scripts/restore-mailserver.sh --from /mnt/backup-hdd/mailserver/daily/YYYY-MM-DD --dry-run
+
+# 特定コンポーネントのリストア
+./scripts/restore-mailserver.sh --from /mnt/backup-hdd/mailserver/daily/YYYY-MM-DD --component mysql
+
+# 全コンポーネントのリストア
+./scripts/restore-mailserver.sh --from /mnt/backup-hdd/mailserver/daily/YYYY-MM-DD --component all
+
+# リストアログ確認
+tail -f ~/.mailserver-restore.log
 ```
 
 ### Terraform操作（S3 Backup）
@@ -289,13 +318,12 @@ terraform output
 詳細: [services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md)
 
 ### Blog System
-- **P011: kuma8088.com表示問題** ⚠️ 起票済み:
+- **P011: kuma8088.com表示問題** ✅ **解決済み**（2025-11-11）:
   - **症状**: blog.kuma8088.com配下10サイトでElementorプレビュー/静的ファイル404
-  - **根本原因**: Cloudflare HTTPS検出が**欠落**（他ドメインには存在）
-  - **影響**: WordPress HTTP判定 → Elementor HTTP URL生成 → 混在コンテンツエラー
-  - **解決策**: kuma8088.confに `fastcgi_param HTTPS on;` 追加（8箇所）
-  - 詳細: [docs/application/blog/issue/active/P011-subdirectory-display-issue.md](docs/application/blog/issue/active/P011-subdirectory-display-issue.md)
-- **P010: HTTPS混在コンテンツエラー**
+  - **根本原因**: Nginx HTTPS検出パラメータ欠落
+  - **解決策**: kuma8088.confに `fastcgi_param HTTPS on;` と `HTTP_X_FORWARDED_PROTO https;` を8箇所追加
+  - 詳細: [docs/application/blog/issue/completed/P011-subdirectory-display-issue.md](docs/application/blog/issue/completed/P011-subdirectory-display-issue.md)
+- **P010: HTTPS混在コンテンツエラー** ⚠️ 起票済み:
   - 詳細: [docs/application/blog/issue/active/P010_https-mixed-content-error.md](docs/application/blog/issue/active/P010_https-mixed-content-error.md)
 - **Nginxサブディレクトリ404**: alias設定とSCRIPT_FILENAMEの誤設定
 - **wp-config.php編集失敗**: 所有者82:82 (www-data) への変更必要
