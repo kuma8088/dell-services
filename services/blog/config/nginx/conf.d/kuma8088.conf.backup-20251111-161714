@@ -1,0 +1,247 @@
+# Virtual host: kuma8088.com
+# Phase 1 (Test): blog.kuma8088.com
+# Phase 2 (Production): kuma8088.com www.kuma8088.com
+server {
+    listen 80;
+    server_name blog.kuma8088.com;
+
+    root /var/www/html/kuma8088;
+    index index.php index.html;
+
+    access_log /var/log/nginx/kuma8088-access.log;
+    error_log /var/log/nginx/kuma8088-error.log;
+
+    # Subdirectory site: cameramanual
+    # Static files (wp-content, wp-includes)
+    location ~ ^/cameramanual/(wp-content|wp-includes)/(.*)$ {
+        alias /var/www/html/kuma8088-cameramanual/$1/$2;
+        
+        expires max;
+        access_log off;
+    }
+
+    location /cameramanual {
+        alias /var/www/html/kuma8088-cameramanual;
+        index index.php index.html;
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass wordpress:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        }
+
+        try_files $uri $uri/ @cameramanual;
+    }
+
+    location @cameramanual {
+        rewrite /cameramanual/(.*)$ /cameramanual/index.php?/$1 last;
+    }
+
+    # Subdirectory site: elementordemo1
+    # Static files (wp-content, wp-includes)
+    location ~ ^/elementordemo1/(wp-content|wp-includes)/(.*)$ {
+        alias /var/www/html/kuma8088-elementordemo1/$1/$2;
+
+        expires max;
+        access_log /var/log/nginx/kuma8088-static-access.log;
+        error_log /var/log/nginx/kuma8088-static-error.log;
+    }
+
+    location /elementordemo1 {
+        alias /var/www/html/kuma8088-elementordemo1;
+        index index.php index.html;
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass wordpress:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        }
+
+        try_files $uri $uri/ @elementordemo1;
+    }
+
+    location @elementordemo1 {
+        rewrite /elementordemo1/(.*)$ /elementordemo1/index.php?/$1 last;
+    }
+
+    # Subdirectory site: elementordemo02
+    # Static files (wp-content, wp-includes)
+    location ~ ^/elementordemo02/(wp-content|wp-includes)/(.*)$ {
+        alias /var/www/html/kuma8088-elementordemo02/$1/$2;
+        
+        expires max;
+        access_log off;
+    }
+
+    location /elementordemo02 {
+        alias /var/www/html/kuma8088-elementordemo02;
+        index index.php index.html;
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass wordpress:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        }
+
+        try_files $uri $uri/ @elementordemo02;
+    }
+
+    location @elementordemo02 {
+        rewrite /elementordemo02/(.*)$ /elementordemo02/index.php?/$1 last;
+    }
+
+    # Subdirectory site: elementor-demo-03
+    # Static files (wp-content, wp-includes)
+    location ~ ^/elementor-demo-03/(wp-content|wp-includes)/(.*)$ {
+        alias /var/www/html/kuma8088-elementor-demo-03/$1/$2;
+        
+        expires max;
+        access_log off;
+    }
+
+    location /elementor-demo-03 {
+        alias /var/www/html/kuma8088-elementor-demo-03;
+        index index.php index.html;
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass wordpress:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        }
+
+        try_files $uri $uri/ @elementordemo03;
+    }
+
+    location @elementordemo03 {
+        rewrite /elementor-demo-03/(.*)$ /elementor-demo-03/index.php?/$1 last;
+    }
+
+    # Subdirectory site: elementor-demo-04
+    # Static files (wp-content, wp-includes)
+    location ~ ^/elementor-demo-04/(wp-content|wp-includes)/(.*)$ {
+        alias /var/www/html/kuma8088-elementor-demo-04/$1/$2;
+        
+        expires max;
+        access_log off;
+    }
+
+    location /elementor-demo-04 {
+        alias /var/www/html/kuma8088-elementor-demo-04;
+        index index.php index.html;
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass wordpress:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        }
+
+        try_files $uri $uri/ @elementordemo04;
+    }
+
+    location @elementordemo04 {
+        rewrite /elementor-demo-04/(.*)$ /elementor-demo-04/index.php?/$1 last;
+    }
+
+    # Subdirectory site: ec02test
+    # Static files (wp-content, wp-includes)
+    location ~ ^/ec02test/(wp-content|wp-includes)/(.*)$ {
+        alias /var/www/html/kuma8088-ec02test/$1/$2;
+        
+        expires max;
+        access_log off;
+    }
+
+    location /ec02test {
+        alias /var/www/html/kuma8088-ec02test;
+        index index.php index.html;
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass wordpress:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        }
+
+        try_files $uri $uri/ @ec02test;
+    }
+
+    location @ec02test {
+        rewrite /ec02test/(.*)$ /ec02test/index.php?/$1 last;
+    }
+
+    # Test site
+    location /test {
+        alias /var/www/html/kuma8088-test;
+        index index.php index.html;
+
+        location ~ \.php$ {
+            include fastcgi_params;
+            fastcgi_pass wordpress:9000;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+            fastcgi_param HTTPS on;
+            fastcgi_param HTTP_X_FORWARDED_PROTO https;
+        }
+
+        try_files $uri $uri/ @test;
+    }
+
+    location @test {
+        rewrite /test/(.*)$ /test/index.php?/$1 last;
+    }
+
+    # Root domain site
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    # Static files for root domain only (not subdirectories)
+    location ~* ^/(?!cameramanual|elementordemo1|elementordemo02|elementor-demo-03|elementor-demo-04|ec02test).*\.(css|gif|ico|jpeg|jpg|js|png)$ {
+        root /var/www/html/kuma8088;
+        expires max;
+        log_not_found off;
+    }
+}

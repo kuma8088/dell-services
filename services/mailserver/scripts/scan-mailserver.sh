@@ -27,6 +27,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=backup-config.sh
 source "${SCRIPT_DIR}/backup-config.sh"
 
+# Source preflight checks library
+PREFLIGHT_LIB="${SCRIPT_DIR}/preflight-checks.sh"
+if [[ -f "${PREFLIGHT_LIB}" ]]; then
+    # shellcheck disable=SC1091
+    source "${PREFLIGHT_LIB}"
+fi
+
 # =====================================================
 # Parameters and Variables
 # =====================================================
@@ -69,6 +76,18 @@ CLAMAV_NEW_VERSION=""
 log "=========================================="
 log "Phase 11-B: Mailserver Malware Scan (${SCAN_MODE})"
 log "=========================================="
+
+# Run pre-flight checks
+if command -v run_preflight_checks >/dev/null 2>&1; then
+    if ! run_preflight_checks \
+        --disk-space 5 \
+        --env-vars "BACKUP_ROOT,LOG_FILE"; then
+        log "ERROR: Pre-flight checks failed"
+        exit 1
+    fi
+else
+    log "INFO: Preflight checks library not available, using legacy checks"
+fi
 
 # Check ClamAV
 if ! command -v clamscan &>/dev/null; then

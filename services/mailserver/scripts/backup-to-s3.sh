@@ -27,6 +27,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=backup-config.sh
 source "${SCRIPT_DIR}/backup-config.sh"
 
+# Source preflight checks library
+PREFLIGHT_LIB="${SCRIPT_DIR}/preflight-checks.sh"
+if [[ -f "${PREFLIGHT_LIB}" ]]; then
+    # shellcheck disable=SC1091
+    source "${PREFLIGHT_LIB}"
+fi
+
 # =====================================================
 # Parameters and Variables
 # =====================================================
@@ -64,6 +71,19 @@ log "=========================================="
 log "Phase 11-B: S3 Backup Upload Started"
 log "Backup Date: ${BACKUP_DATE}"
 log "=========================================="
+
+# Run pre-flight checks
+if command -v run_preflight_checks >/dev/null 2>&1; then
+    if ! run_preflight_checks \
+        --disk-space 10 \
+        --env-vars "S3_BUCKET,AWS_REGION,DAILY_BACKUP_DIR" \
+        --files "${LOCAL_BACKUP_DIR}/checksums.sha256"; then
+        log "ERROR: Pre-flight checks failed"
+        exit 1
+    fi
+else
+    log "INFO: Preflight checks library not available, using legacy checks"
+fi
 
 # Check lock file
 if ! check_lock_file; then
