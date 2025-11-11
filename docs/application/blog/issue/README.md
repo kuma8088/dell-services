@@ -9,12 +9,11 @@
 ```
 docs/application/blog/issue/
 ├── README.md              # このファイル
-├── Completed/             # 完了した課題
-│   └── C001_*.md
-├── I001_*.md              # Inbox（新規課題）
-├── I002_*.md
-├── ...
-└── P001_*.md              # Processing（作業中）
+├── active/                # アクティブな課題（作業中・新規）
+│   ├── I001-I009_*.md    # Improvement Issues
+│   └── P010-P011_*.md    # Problem Issues
+└── completed/             # 完了した課題
+    └── C001_*.md
 ```
 
 ---
@@ -23,9 +22,9 @@ docs/application/blog/issue/
 
 ### プレフィックス
 
-- **I###**: **Inbox** - 新規課題、まだ着手していないもの
-- **P###**: **Processing** - 作業中の課題
-- **C###**: **Completed** - 完了した課題（`Completed/` ディレクトリに移動）
+- **I###**: **Improvement** - 改善提案、新機能要望（`active/` ディレクトリ）
+- **P###**: **Problem** - 問題、バグ、不具合（`active/` ディレクトリ）
+- **C###**: **Completed** - 完了した課題（`completed/` ディレクトリに移動）
 
 ### ファイル名形式
 
@@ -42,19 +41,26 @@ docs/application/blog/issue/
 
 ## 📋 課題管理フロー
 
-### 1. 新規課題作成（Inbox）
+### 1. 新規課題作成
 
+**Improvement（改善提案）の場合:**
 ```bash
-# I{次の番号}_課題名.md を作成
+cd docs/application/blog/issue/active/
 touch I010_new-feature.md
 ```
 
-**テンプレート**:
-```markdown
-# I###: 課題タイトル
+**Problem（問題・バグ）の場合:**
+```bash
+cd docs/application/blog/issue/active/
+touch P012_bug-description.md
+```
 
-**関連タスク**: [#番号] タスク名
-**ステータス**: Inbox
+**テンプレート:**
+```markdown
+# {I/P}###: 課題タイトル
+
+**タイプ**: Improvement / Problem
+**ステータス**: Open / In Progress / Blocked
 **優先度**: Critical/High/Medium/Low
 **作成日**: YYYY-MM-DD
 **担当**: 未割当
@@ -72,27 +78,15 @@ touch I010_new-feature.md
 ## 📅 更新履歴
 ```
 
-### 2. 作業開始（Processing）
+### 2. 作業完了
 
 ```bash
-# I### を P### にリネーム
-mv I004_backup-system.md P004_backup-system.md
+# C### にリネーム
+mv active/I010_new-feature.md completed/C010_new-feature.md
 
 # ファイル内のステータスを更新
-# **ステータス**: Inbox → Processing
-```
-
-### 3. 作業完了（Completed）
-
-```bash
-# P### を C### にリネーム
-mv P004_backup-system.md C004_backup-system.md
-
-# Completed ディレクトリに移動
-mv C004_backup-system.md Completed/
-
-# ファイル内のステータスを更新
-# **ステータス**: Processing → Completed
+# **ステータス**: Open/In Progress → Completed
+# **完了日**: YYYY-MM-DD を追加
 ```
 
 ---
@@ -119,23 +113,26 @@ mv C004_backup-system.md Completed/
 
 ## 📊 現在の課題状況
 
-### Inbox（新規）
-- I001: 管理ポータル統合
-- I002: ポータルデザイン刷新
-- I003: ポータル機能拡張
-- I004: バックアップ不具合修正 ⚠️ **Critical**
-- I005: バックアップ改善
-- I006: キャッシュシステム
-- I007: Email Routing移行
-- I008: 本番ドメイン移行
-- I009: サイト動作確認
+### Active - Problems（問題・バグ）
+- **P010**: HTTPS混在コンテンツエラー
+- **P011**: kuma8088.com表示問題（Phase 011） ⚠️ **High**
+  - blog.kuma8088.com配下10サイトでElementorプレビュー/静的ファイル404
+  - 根本原因: Cloudflare HTTPS検出欠落
+  - 解決策: `fastcgi_param HTTPS on;` 追加
 
-### Processing（作業中）
-- P011: kuma8088.com表示問題（Phase 011） ⚠️ **High**
+### Active - Improvements（改善提案）
+- **I001**: 管理ポータル統合
+- **I002**: ポータルデザイン刷新
+- **I003**: ポータル機能拡張
+- **I004**: バックアップ不具合修正 ⚠️ **Critical**
+- **I005**: バックアップ改善
+- **I006**: キャッシュシステム
+- **I007**: Email Routing移行
+- **I008**: 本番ドメイン移行
+- **I009**: サイト動作確認
 
 ### Completed（完了）
-- C001: Xserver移行問題対応（Phase 1完了）
-- C002: WordPress SMTP設定（全16サイト、2025-11-10完了）
+- **C001**: Xserver移行問題対応（Phase A-1完了、2025-11）
 
 ---
 
@@ -150,7 +147,7 @@ mv C004_backup-system.md Completed/
 
 ## 📝 更新履歴
 
+- 2025-11-11: ディレクトリ構造整理（active/, completed/に再編成）
+- 2025-11-11: プレフィックス定義更新（I=Improvement, P=Problem）
 - 2025-11-10: Issue管理ディレクトリ作成
-- 2025-11-10: I001-I009, C001 作成
-- 2025-11-10: P011 追加（kuma8088.com表示問題）
-- 2025-11-10: C002 追加（WordPress SMTP設定完了）
+- 2025-11-10: I001-I009, P010-P011, C001 作成

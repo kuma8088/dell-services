@@ -252,9 +252,20 @@ services/mailserver/usermgmt/
 ```
 docs/application/mailserver/usermgmt/
 ├── README.md                # ✅ 本ファイル
-├── DEVELOPMENT.md           # ✅ 開発進捗トラッキング (MVP/Extended分離)
-├── API.md                   # ✅ API エンドポイント仕様
-└── CHANGELOG.md             # ✅ 変更履歴
+├── CHANGELOG.md             # ✅ 変更履歴
+├── phases/                  # ✅ フェーズ記録
+│   ├── PHASE11_COMPLETION.md
+│   ├── PHASE11A_COMPLETION.md
+│   ├── PHASE11_DEVELOPMENT.md
+│   └── PHASE11_EXTENDED_FEATURES.md
+├── guides/                  # ✅ ガイド類
+│   ├── DEVELOPMENT.md       # 開発進捗トラッキング
+│   ├── USER_GUIDE.md        # ユーザーガイド
+│   ├── API.md               # API エンドポイント仕様
+│   └── ROLLBACK.md          # ロールバック手順
+└── design/                  # ✅ 設計ドキュメント
+    ├── 05_user_management_design.md
+    └── ADMIN_USER_ROLE_DESIGN.md
 ```
 
 ---
@@ -340,11 +351,25 @@ pytest tests/integration/
 
 ## 📚 関連ドキュメント
 
-- **設計書**: `../05_user_management_design.md`
-- **API仕様**: `API.md`
-- **開発進捗**: `DEVELOPMENT.md` ← **MVP/Extended フェーズ分離済み**
-- **変更履歴**: `CHANGELOG.md`
-- **Mailserver 全体設計**: `../README.md`
+**ガイド:**
+- [開発進捗](guides/DEVELOPMENT.md) - MVP/Extended フェーズ管理
+- [ユーザーガイド](guides/USER_GUIDE.md) - 管理画面の使い方
+- [API仕様](guides/API.md) - エンドポイント仕様
+- [ロールバック手順](guides/ROLLBACK.md) - 復旧手順
+
+**設計:**
+- [ユーザー管理設計](design/05_user_management_design.md)
+- [管理者ロール設計](design/ADMIN_USER_ROLE_DESIGN.md)
+
+**フェーズ記録:**
+- [Phase 11完了報告](phases/PHASE11_COMPLETION.md)
+- [Phase 11-A完了報告](phases/PHASE11A_COMPLETION.md)
+- [Phase 11開発記録](phases/PHASE11_DEVELOPMENT.md)
+- [Phase 11拡張機能](phases/PHASE11_EXTENDED_FEATURES.md)
+
+**その他:**
+- [変更履歴](CHANGELOG.md)
+- [Mailserver概要](../README.md)
 
 ---
 

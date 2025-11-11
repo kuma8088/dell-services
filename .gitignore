@@ -42,20 +42,6 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Generated procedures (keep structure but ignore content)
-generated_procedures/*.json
-generated_procedures/*.md
-generated_procedures/management/
-generated_procedures/progressive_learning/
-
-# Development and test files
-development/.pytest_cache/
-development/demo_*/
-development/generated_procedure.md
-
-# Test verification files
-test_verification/
-
 # Temporary files
 *.tmp
 *.temp.terraform/
