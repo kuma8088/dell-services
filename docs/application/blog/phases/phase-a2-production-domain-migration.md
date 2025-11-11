@@ -33,6 +33,9 @@
 
 7. 301リダイレクト設定
    └─ 旧URL → 新URL自動転送
+
+8. WP Mail SMTP設定（全Phase完了後）
+   └─ 全サイトのメール送信設定
 ```
 
 ### 重要な注意事項
@@ -1843,6 +1846,48 @@ curl -v https://blog.fx-trader-life.com/MFKC 2>&1 | grep -i location
 3. **Phase 0実行**: 事前準備（DNS TTL短縮、バックアップ）
 4. **Phase 1実行**: テスト移行（demo1.kuma8088.com検証）
 5. **Phase 2-3実行**: 段階的本番移行
+6. **WP Mail SMTP設定**: 全Phase完了後に実行
+
+---
+
+## Phase完了後: WP Mail SMTP設定
+
+### 目的
+全15サイトにWP Mail SMTPプラグインを設定し、ドメイン別送信元メールアドレスでPostfix経由メール送信を有効化。
+
+### 実行タイミング
+**Phase 1, 2, 3すべて完了後**（本番ドメイン移行が完了していること）
+
+### 実行手順
+
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/blog
+
+# 1. 設定状況確認
+./scripts/check-wp-mail-smtp.sh
+
+# 2. 全サイト一括設定
+./scripts/setup-wp-mail-smtp.sh
+
+# 3. 設定確認
+./scripts/check-wp-mail-smtp.sh
+
+# 4. テストメール送信（任意）
+./scripts/setup-wp-mail-smtp.sh --test-email your-email@example.com
+```
+
+### 設定内容
+- **SMTP設定**: dell-workstation.tail67811d.ts.net:587 (TLS)
+- **送信元メールアドレス**: ドメイン別自動設定
+  - fx-trader-life系 → noreply@fx-trader-life.com
+  - kuma8088系 → noreply@kuma8088.com
+  - toyota-phv → noreply@toyota-phv.com
+  - webmakeprofit系 → noreply@webmakeprofit.com
+  - webmakesprofit → noreply@webmakesprofit.com
+
+### 詳細情報
+- スクリプト詳細: [services/blog/scripts/setup-wp-mail-smtp.sh](../../../../services/blog/scripts/setup-wp-mail-smtp.sh)
+- セットアップガイド: [docs/application/blog/guides/WP-MAIL-SMTP-SETUP.md](../guides/WP-MAIL-SMTP-SETUP.md)
 
 ---
 
