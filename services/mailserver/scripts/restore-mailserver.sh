@@ -24,14 +24,25 @@ COMPONENT="all"
 RESTORE_TEMP_DIR="/tmp/mailserver-restore-$$"
 MYSQL_PASSWORD=""
 MYSQL_USER_VALUE="${MYSQL_USER}"
+DRY_RUN=0
+RESTORE_LOG="$HOME/.mailserver-restore.log"
 
 usage() {
     cat <<EOF
-Usage: $0 --from BACKUP_PATH [--component all|mail|mysql|config|ssl|dkim]
+Usage: $0 --from BACKUP_PATH [OPTIONS]
+
+Required:
+  --from PATH          Backup directory path to restore from
+
+Options:
+  --component NAME     Component to restore (all, mail, mysql, config, ssl, dkim)
+  --dry-run            Show what would be restored without actually restoring
+  -h, --help           Show this help message
 
 Examples:
   $0 --from /mnt/backup-hdd/mailserver/latest
   $0 --from /mnt/backup-hdd/mailserver/daily/2025-11-07 --component mysql
+  $0 --from /mnt/backup-hdd/mailserver/latest --dry-run
 EOF
 }
 
@@ -44,6 +55,10 @@ while [[ $# -gt 0 ]]; do
         --component)
             COMPONENT="$2"
             shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=1
+            shift
             ;;
         --help|-h)
             usage
@@ -70,7 +85,13 @@ log() {
     local message="$2"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    printf '[%s] [%s] %s\n' "${timestamp}" "${level}" "${message}"
+    local entry="[${timestamp}] [${level}] ${message}"
+
+    printf '%s\n' "${entry}"
+
+    if [[ -n "${RESTORE_LOG}" ]]; then
+        printf '%s\n' "${entry}" >> "${RESTORE_LOG}"
+    fi
 }
 
 trim() {
@@ -157,6 +178,13 @@ restore_mail() {
         return 1
     fi
 
+    if [[ ${DRY_RUN} -eq 1 ]]; then
+        log "INFO" "[DRY-RUN] Would backup existing mail data to ${MAIL_DATA_DIR}.bak.*"
+        log "INFO" "[DRY-RUN] Would restore mail data from ${source_mail}/ to ${MAIL_DATA_DIR}/"
+        log "INFO" "[DRY-RUN] Estimated size: $(du -sh "${source_mail}" | cut -f1)"
+        return 0
+    fi
+
     backup_existing_dir "${MAIL_DATA_DIR}" "mail data"
     log "INFO" "Restoring mail data with rsync..."
     rsync -a "${source_mail}/" "${MAIL_DATA_DIR}/"
@@ -182,6 +210,20 @@ restore_mysql() {
         shopt -u nullglob
         log "ERROR" "No .sql.gz files in ${source_mysql}"
         return 1
+    fi
+
+    if [[ ${DRY_RUN} -eq 1 ]]; then
+        log "INFO" "[DRY-RUN] Would restore ${#files[@]} database(s):"
+        for dump in "${files[@]}"; do
+            local filename
+            filename="$(basename "${dump}")"
+            local db="${filename%.sql.gz}"
+            local size
+            size=$(du -sh "${dump}" | cut -f1)
+            log "INFO" "[DRY-RUN]   - ${db} (${size})"
+        done
+        shopt -u nullglob
+        return 0
     fi
 
     local status=0
@@ -211,6 +253,14 @@ restore_tarball() {
         return 1
     fi
 
+    if [[ ${DRY_RUN} -eq 1 ]]; then
+        local size
+        size=$(du -sh "${tarball}" | cut -f1)
+        log "INFO" "[DRY-RUN] Would backup existing ${label} to ${destination}.bak.*"
+        log "INFO" "[DRY-RUN] Would extract ${label} tarball (${size}) to ${destination}/"
+        return 0
+    fi
+
     backup_existing_dir "${destination}" "${label}"
     mkdir -p "${destination}"
     tar -xzf "${tarball}" -C "${destination}"
@@ -218,6 +268,17 @@ restore_tarball() {
 
 restore_config() {
     restore_tarball "${BACKUP_SOURCE}/config/config.tar.gz" "${CONFIG_DIR}" "configuration" || return 1
+    
+    if [[ ${DRY_RUN} -eq 1 ]]; then
+        if [[ -f "${BACKUP_SOURCE}/config/docker-compose.yml" ]]; then
+            log "INFO" "[DRY-RUN] Would copy docker-compose.yml to ${MAILSERVER_ROOT}/"
+        fi
+        if [[ -f "${BACKUP_SOURCE}/config/env" ]]; then
+            log "INFO" "[DRY-RUN] Would copy .env to ${MAILSERVER_ROOT}/"
+        fi
+        return 0
+    fi
+    
     if [[ -f "${BACKUP_SOURCE}/config/docker-compose.yml" ]]; then
         cp "${BACKUP_SOURCE}/config/docker-compose.yml" "${MAILSERVER_ROOT}/docker-compose.yml"
     fi
@@ -265,6 +326,13 @@ restore_components() {
     esac
 }
 
+ensure_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        log "ERROR" "Required command not found: $1"
+        exit 1
+    fi
+}
+
 main() {
     require_root
     ensure_command rsync
@@ -279,9 +347,3 @@ main() {
 }
 
 main
-ensure_command() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        log "ERROR" "Required command not found: $1"
-        exit 1
-    fi
-}

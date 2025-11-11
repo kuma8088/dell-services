@@ -25,6 +25,13 @@ fi
 # shellcheck disable=SC1091
 source "${CONFIG_FILE}"
 
+# Source preflight checks library
+PREFLIGHT_LIB="${SCRIPT_DIR}/preflight-checks.sh"
+if [[ -f "${PREFLIGHT_LIB}" ]]; then
+    # shellcheck disable=SC1091
+    source "${PREFLIGHT_LIB}"
+fi
+
 BACKUP_TYPE="daily"
 START_TS=$(date +%s)
 BACKUP_DATE=$(date '+%Y-%m-%d')
@@ -184,6 +191,19 @@ initialize() {
     if [[ "$(id -u)" -ne 0 && "$(whoami)" != "system-admin" ]]; then
         log "CRITICAL" "Run as root or system-admin" "INIT"
         return 1
+    fi
+
+    # Run pre-flight checks
+    if command -v run_preflight_checks >/dev/null 2>&1; then
+        if ! run_preflight_checks \
+            --disk-space 50 \
+            --containers "mailserver-mariadb,mailserver-postfix,mailserver-dovecot" \
+            --env-vars "BACKUP_ROOT,LOG_FILE"; then
+            log "CRITICAL" "Pre-flight checks failed" "INIT"
+            return 1
+        fi
+    else
+        log "INFO" "Preflight checks library not available, using legacy checks" "INIT"
     fi
 
     mkdir -p "$(dirname "${LOG_FILE}")" "$(dirname "${ERROR_LOG}")"
