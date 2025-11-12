@@ -22,11 +22,11 @@
 
 ### 1.1 現在のメールフロー
 
-**受信メールフロー:**
+**受信メールフロー（EC2経由）:**
 ```
 Internet (Port 25)
   ↓
-EC2 MX Gateway (Postfix in Docker)
+EC2 MX Gateway (Postfix in Docker) ← 受信専用
   ↓ Tailscale VPN (100.110.222.53:2525)
   ↓ LMTP Protocol
 Dell WorkStation (Dovecot)
@@ -34,34 +34,42 @@ Dell WorkStation (Dovecot)
 Mailbox Storage
 ```
 
-**送信メールフロー:**
+**送信メールフロー（SendGrid経由、EC2を経由しない）:**
 ```
-Mail Client (IMAP/POP3)
+Mail Client (Port 587)
   ↓
-Dell Dovecot
-  ↓
-Dell Postfix (Port 587)
+Dell Postfix ← 送信専用
   ↓
 SendGrid Relay
   ↓
 Internet
 ```
 
+**重要:**
+- ✅ **EC2 MX Gatewayは受信専用** - Port 25でメール受信のみ処理
+- ✅ **送信はSendGrid経由** - Dell側のPostfixから直接SendGridへ送信（EC2不使用）
+- ⚠️ **EC2廃止の影響は受信フローのみ** - 送信には一切影響しない
+
 ### 1.2 現在のEC2構成
+
+**役割:** ⚠️ **受信専用MX Gateway** - Port 25でメール受信し、Dell側にLMTP転送
 
 **リソース:**
 - **インスタンスタイプ**: t4g.nano (ARM64)
 - **月額コスト**: 約$3.50 (~¥525)
 - **OS**: Amazon Linux 2023
 - **主要コンポーネント**:
-  - Postfix (Dockerコンテナ)
-  - Tailscale VPN
+  - Postfix (Dockerコンテナ) - 受信専用
+  - Tailscale VPN - Dell側への安全な接続
   - CloudWatch Logs Agent
 
 **設定:**
-- MXレコード: `mail.kuma8088.com` (EIP割り当て)
-- relay_domains: `kuma8088.com`
-- LMTP転送先: `100.110.222.53:2525` (Tailscale経由)
+- **開放ポート**: Port 25のみ（SMTP受信）
+- **MXレコード**: `mail.kuma8088.com` (EIP割り当て)
+- **relay_domains**: `kuma8088.com` - 受信許可ドメイン
+- **LMTP転送先**: `100.110.222.53:2525` (Tailscale経由でDell Dovecotへ)
+
+**送信機能:** ❌ なし - 送信はDell側のPostfix → SendGrid経由で処理
 
 ### 1.3 EC2廃止による期待効果
 
@@ -590,14 +598,26 @@ docker restart mailserver-postfix
 
 ## 9. まとめ
 
-### 9.1 重要な発見
+### 9.1 現在のシステム構成（重要）
+
+**EC2 MX Gatewayの役割:**
+- ⚠️ **受信専用** - Port 25でメール受信し、Dell側にLMTP転送
+- ❌ **送信機能なし** - 送信は全てDell側のPostfix → SendGrid経由で処理
+- ⚠️ **EC2廃止の影響範囲** - 受信フローのみ（送信には一切影響しない）
+
+**Dell側の構成:**
+- ✅ Dovecot: LMTP受信（Port 2525）+ IMAP/POP3提供
+- ✅ Postfix: SendGrid経由でメール送信（Port 587）
+- ✅ 送信フローはEC2不使用で既に独立している
+
+### 9.2 重要な発見
 
 **Cloudflare Email Routingの制限:**
 - ❌ カスタムSMTP/LMTPサーバーへの直接転送は**不可能**
 - ❌ 現在のEC2 MX Gateway構成を直接置き換えることは**できない**
 - ✅ 検証済みメールアドレスへの転送のみ対応
 
-### 9.2 最終推奨
+### 9.3 最終推奨
 
 **短期（現在～Phase 12）:**
 - ✅ **オプション3-B: EC2 + Savings Plans**
@@ -607,7 +627,7 @@ docker restart mailserver-postfix
 - ⭐ **オプション4: Amazon SES Receiving**
 - 理由: サーバーレス、コスト最適、AWS統合
 
-### 9.3 次のステップ
+### 9.4 次のステップ
 
 1. ✅ この移行計画書をGitにコミット
 2. ⏳ Savings Plans適用の検討（オプション）
