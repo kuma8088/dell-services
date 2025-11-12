@@ -38,6 +38,8 @@
   - API仕様: [usermgmt/guides/API.md](/docs/application/mailserver/usermgmt/guides/API.md)
   - 設計: [usermgmt/design/](/docs/application/mailserver/usermgmt/design/)
   - フェーズ記録: [usermgmt/phases/](/docs/application/mailserver/usermgmt/phases/)
+- **移行計画:**
+  - Cloudflare Email Relay: [migration/cloudflare-email-relay-migration.md](/docs/application/mailserver/migration/cloudflare-email-relay-migration.md)
 - **トラブルシューティング:** [/services/mailserver/troubleshoot/README.md](/services/mailserver/troubleshoot/README.md)
 - **Device Access:** [device/README.md](/docs/application/mailserver/device/README.md)
 

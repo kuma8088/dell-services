@@ -125,6 +125,29 @@
 
 **復旧所要時間**: 30分〜4時間（障害レベルによる）
 
+### 7. 移行計画: Cloudflare Email Relay
+
+#### [Cloudflare Email Relay移行計画 (migration/cloudflare-email-relay-migration.md)](./migration/cloudflare-email-relay-migration.md)
+- EC2 MX Gateway廃止の検討
+- Cloudflare Email Routingの制限分析
+- 移行オプション比較（5つの選択肢）
+- コスト比較・TCO分析
+- 推奨アクションプラン
+
+**調査結果 (2025-11-12):**
+- ❌ **Cloudflare Email Routingは現構成の直接置き換え不可**
+  - カスタムSMTP/LMTPサーバーへの転送は不可能
+  - 検証済みメールアドレスへの転送のみ対応
+- ✅ **短期推奨**: EC2構成の維持 + Savings Plans適用（月額¥525 → ¥368）
+- ⭐ **中長期推奨**: Amazon SES Receiving（月額¥45、Phase 12で実施）
+
+**移行オプション:**
+1. ⚠️ Fetchmail方式（非推奨：複雑性高）
+2. ⚠️ Dell直接公開（要検証：ISP制約あり）
+3. ✅ **EC2最適化（推奨：現状維持）**
+4. ⭐ **SES Receiving（有力：サーバーレス化）**
+5. 🔧 Email Worker（技術的可能：保守複雑）
+
 ---
 
 ## 🚀 クイックスタート
