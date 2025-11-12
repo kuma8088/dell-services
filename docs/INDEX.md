@@ -39,7 +39,8 @@
   - 設計: [usermgmt/design/](/docs/application/mailserver/usermgmt/design/)
   - フェーズ記録: [usermgmt/phases/](/docs/application/mailserver/usermgmt/phases/)
 - **移行計画:**
-  - Cloudflare Email Relay: [migration/cloudflare-email-relay-migration.md](/docs/application/mailserver/migration/cloudflare-email-relay-migration.md)
+  - Cloudflare Email Worker実装手順書: [migration/cloudflare-email-worker-implementation.md](/docs/application/mailserver/migration/cloudflare-email-worker-implementation.md) ⭐ 採用
+  - 移行オプション比較（参考資料）: [migration/cloudflare-email-relay-migration.md](/docs/application/mailserver/migration/cloudflare-email-relay-migration.md)
 - **トラブルシューティング:** [/services/mailserver/troubleshoot/README.md](/services/mailserver/troubleshoot/README.md)
 - **Device Access:** [device/README.md](/docs/application/mailserver/device/README.md)
 
