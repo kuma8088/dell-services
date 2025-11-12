@@ -64,6 +64,100 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## 📊 プロジェクト進捗サマリー（AI用クイックリファレンス）
+
+### ✅ 完了済みフェーズ
+
+**インフラ基盤**:
+- Phase 3: Docker環境構築 ✅ 完了
+- KVM環境構築 ✅ 完了（現在未使用）
+
+**Mailserver（8コンテナ稼働中）**:
+- Phase 10: ローカルバックアップシステム ✅ 完了
+  - 日次/週次自動バックアップ（cron設定済み）
+  - 38テストケース実装（TDD開発）
+  - リストア手順確立
+- Phase 11: User Management System ✅ 完了
+  - Flask + MariaDB実装
+  - REST API提供
+  - Web UI完備
+- Phase 11-A: Admin管理機能 ✅ 完了
+  - 管理者権限分離
+  - 単一管理者制約
+- Phase 11-B: S3オフサイトバックアップ ✅ 完了
+  - Terraform IaC（S3 + IAM + CloudWatch + SNS）
+  - Object Lock COMPLIANCE（ランサムウェア対策）
+  - ClamAV + rkhunter マルウェアスキャン
+  - コスト監視（10円/100円閾値）
+
+**Blog System（16サイト・4コンテナ稼働中）**:
+- Phase A-1: 一括マイグレーション ✅ 完了（2025-11-09）
+  - 16 WordPress サイト移植（Xserver → Dell、95GB）
+  - Docker Compose環境構築
+  - Cloudflare Tunnel設定（14 Public Hostnames）
+- Phase A-2: 本番ドメイン移行 ✅ 完了（2025-11-12）
+  - 15サイト: blog.* → 本番ドメイン
+  - 全サイトサブドメイン化（保守性向上）
+  - 301リダイレクト設定
+  - WP Mail SMTP設定（16サイト）
+- **P011: サブディレクトリ表示問題** ✅ 解決（2025-11-11）
+  - Nginx HTTPS検出パラメータ追加
+  - Elementor jQuery 404エラー解消
+
+**Blog System自動化**:
+- ✅ 新規サイト作成ウィザード（`create-new-wp-site.sh`）
+- ✅ WP Mail SMTP一括設定（`setup-wp-mail-smtp.sh`）
+- ✅ Nginx設定自動生成（247行→55行、78%削減）
+
+### 📝 計画中・未着手フェーズ
+
+**Blog System**:
+- Phase B: Production Hardening（計画中）
+  - CDNキャッシュ最適化
+  - 監視・アラート整備
+  - ディザスタリカバリ手順確立
+- Phase C: Feature Enhancement（計画中）
+  - 管理ポータル統合（Mailserver連携）
+  - SSO実装
+  - マルチサイト管理UI
+  - 自動デプロイパイプライン
+
+**共通インフラ**:
+- AWS移行（Phase 12以降）
+  - 段階的移行: 開発(Dell) → ステージング(AWS) → 本番(Multi-AZ)
+
+### 🎯 Active Issues（優先度順）
+
+**Blog System**:
+- **P010**: HTTPS混在コンテンツエラー（Medium）
+- **I004**: バックアップ不具合修正（Critical） - Phase B-1で対応予定
+- **I005**: バックアップ改善（Medium）
+- **I001-I003**: 管理ポータル統合・UI刷新（Low）
+- **I006**: キャッシュシステム（Low）
+- **I007**: Email Routing移行（Low）
+
+**Mailserver**:
+- 現在アクティブな問題なし（安定稼働中）
+
+### 📌 現在の稼働状況
+
+**Dell WorkStation**:
+- Mailserver: 8コンテナ稼働（安定）
+- Blog System: 4コンテナ + 16サイト稼働（本番運用中）
+- リソース使用: RAM 15GB/32GB、SSD余裕あり、HDD 95.4GB/3.4TB
+
+**EC2**:
+- Postfix MX Gateway: Dockerコンテナで稼働（安定）
+- Terraform管理（IaC完備）
+
+**自動化運用**:
+- 日次バックアップ（AM 3:00）: Mailserver + Blog
+- 週次バックアップ（日曜 AM 2:00）
+- S3レプリケーション（AM 4:00）
+- マルウェアスキャン（AM 5:00）
+
+---
+
 ## 🚨 絶対にやってはいけないこと
 
 ### 1. インフラ変更前の公式ドキュメント確認（必須）

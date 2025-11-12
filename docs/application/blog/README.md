@@ -101,7 +101,7 @@ blog_network (Docker Bridge)
 
 ---
 
-## 🚀 現在の状態（Phase A-1完了）
+## 🚀 現在の状態（Phase A-2完了: 本番運用中）
 
 ### ✅ 完了した作業
 
@@ -164,20 +164,13 @@ blog_network (Docker Bridge)
 - **原因**: Elementorキャッシュ
 - **解決**: ✅ Codexにより解決済み（2025-11-10）
 
-### 🔴 1. blog.kuma8088.com サブディレクトリサイト表示問題 ★Phase 011起票済み
+### ✅ 解決済み: P011 blog.kuma8088.com サブディレクトリサイト表示問題 (2025-11-11)
 
 - **症状**: blog.kuma8088.com配下の10サイトでElementorプレビュー機能と静的ファイル（CSS/JS/画像）が正常に表示されない
-- **影響サイト**:
-  - /elementordemo1, /elementordemo02, /elementor-demo-03, /elementor-demo-04
-  - /ec02test, /cameramanual, /cameramanual-gwpbk492
-  - /test（要確認）, / ルートサイト（要確認）
-- **根本原因**:
-  1. Nginxサブディレクトリルーティング方式（1ドメイン多サイト）
-  2. 絶対URL混在（旧ドメインgwpbk492.xsrv.jp残存）
-  3. Cloudflare Tunnel WAF/Bot Fight Modeによるブロッキング
-- **対処**: 📝 [phase-011-subdirectory-display-issue.md](./issue/active/P011-subdirectory-display-issue.md) 参照
-- **推奨解決策**: 独立サブドメイン化（elementordemo1.kuma8088.com等）
-- **優先度**: 🔴 HIGH（10サイト影響、編集機能使用不可）
+- **根本原因**: Nginx HTTPS検出パラメータ欠落 → WordPress HTTP判定 → 混在コンテンツエラー
+- **解決策**: `fastcgi_param HTTPS on;` と `HTTP_X_FORWARDED_PROTO https;` を8箇所追加
+- **結果**: ✅ 全サイト正常動作、Elementor編集機能復旧
+- **詳細**: [P011-subdirectory-display-issue.md](./issue/completed/P011-subdirectory-display-issue.md)
 
 ### 2. cameramanual PHP互換性エラー
 - **症状**: HTTP 500エラー
@@ -485,8 +478,8 @@ docker compose exec wordpress stat -c "%u:%g %a %n" /var/www/html/site-name/wp-c
 ---
 
 **作成日**: 2025-11-08
-**最終更新**: 2025-11-10
-**バージョン**: 2.1
+**最終更新**: 2025-11-12
+**バージョン**: 3.0
 **作成者**: Claude
 
-**現在のフェーズ**: Phase A-1完了、Phase A-2準備中
+**現在のフェーズ**: Phase A-2完了（本番運用中）、Phase B準備中

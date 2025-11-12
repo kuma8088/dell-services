@@ -411,12 +411,24 @@ logs/
 - **Docker Compose環境**: nginx, wordpress, mariadb, cloudflared (4コンテナ)
 - **WordPress 16サイト移行**: 95GB データ + DB完了
 - **Cloudflare Tunnel**: 5 Public Hostnames（16 WordPress installations）設定済み
-- **動作確認**: 13/16サイト正常動作、3サイト既知の問題（後回し）
+- **動作確認**: 14/16サイト正常動作
 
-### **Phase A-2: Blog Backup** 📋 計画中
-- 要件定義中（詳細: [docs/application/blog/README.md - Section: バックアップ仕様](docs/application/blog/README.md#-バックアップ仕様phase-a-2予定)）
-- Mailserver Phase 11-Bバックアップシステムとの統合を検討
-- 16 WordPress サイト対応のバックアップスクリプト設計
+### **Phase A-2: 本番ドメイン移行** ✅ 完了 (2025-11-12)
+- **本番ドメイン移行**: 15サイト（blog.* → 本番ドメイン）
+- **全サイトサブドメイン化**: 保守性向上のためサブディレクトリ→サブドメイン移行
+- **301リダイレクト**: 旧URL → 新URL自動転送設定
+- **WP Mail SMTP設定**: 全16サイトでメール送信機能統合
+- **自動化スクリプト**: 新規サイト作成ウィザード、WP Mail SMTP一括設定、Nginx設定生成
+
+### **P011: サブディレクトリ表示問題** ✅ 解決 (2025-11-11)
+- **Nginx HTTPS検出パラメータ追加**: `fastcgi_param HTTPS on;` 等を8箇所追加
+- **Elementor jQuery 404エラー解消**: blog.kuma8088.com配下10サイト正常化
+
+### **Phase B: Blog Production Hardening** 📋 計画中
+- バックアップシステム実装（Mailserver Phase 11-B統合検討）
+- CDNキャッシュ最適化
+- 監視・アラート整備
+- ディザスタリカバリ手順確立
 
 ---
 

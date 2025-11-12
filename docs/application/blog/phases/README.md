@@ -28,13 +28,24 @@ Blog Systemの開発・マイグレーションをフェーズ別に管理しま
   - 根本原因: Cloudflare HTTPS検出欠落 → WordPress HTTP判定 → 混在コンテンツエラー
   - 解決策: `fastcgi_param HTTPS on;` 追加（8箇所）
 
-#### 🔄 Phase A-2: Post-Migration Improvements (計画中)
+#### ✅ Phase A-2: Production Domain Migration (完了: 2025-11-12)
+**Status:** Completed
+**ドキュメント:** [phase-a2-production-domain-migration.md](phase-a2-production-domain-migration.md)
 
-**予定項目:**
-- P011問題の完全解決
-- バックアップシステム実装（Mailserver Phase 10/11-B相当）
-- パフォーマンス最適化（Redis/Varnish検討）
-- 本番ドメイン移行準備
+**目的:**
+- blog.* テストドメインから本番ドメインへ移行
+- 全サイトサブドメイン化（保守性向上）
+- WP Mail SMTP統合（全16サイト）
+
+**成果:**
+- ✅ 15サイト本番ドメイン移行完了
+- ✅ 全サイトサブドメイン化（長期運用の保守性確保）
+- ✅ 301リダイレクト設定（SEO対策）
+- ✅ WP Mail SMTP設定完了（Mailserver連携）
+- ✅ 自動化スクリプト実装（新規サイト作成、SMTP設定、Nginx設定生成）
+
+**解決済み問題:**
+- ✅ P011: サブディレクトリ表示問題（Nginx HTTPS検出パラメータ追加）
 
 ### Phase B: Production Hardening (計画中)
 

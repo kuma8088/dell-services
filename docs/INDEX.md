@@ -47,13 +47,16 @@
 
 **主要ドキュメント:**
 - **Phase進捗:** [phases/](/docs/application/blog/phases/)
-  - Phase A-1: 一括マイグレーション (完了)
+  - Phase A-1: 一括マイグレーション ✅ 完了 (2025-11-09)
+  - Phase A-2: 本番ドメイン移行 ✅ 完了 (2025-11-12)
+  - Phase B: Production Hardening 📋 計画中
 - **Issue管理:** [issue/README.md](/docs/application/blog/issue/README.md)
   - Active Issues: [issue/active/](/docs/application/blog/issue/active/)
     - P010: HTTPS混在コンテンツエラー
-    - P011: サブディレクトリ表示問題 ⚠️
     - I001-I009: 改善提案
   - Completed: [issue/completed/](/docs/application/blog/issue/completed/)
+    - P011: サブディレクトリ表示問題 ✅ 解決 (2025-11-11)
+    - C001: Xserver移行問題対応
 - **構築手順:**
   - 01: 要件定義
   - 02: 設計
