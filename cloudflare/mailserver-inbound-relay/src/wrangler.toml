@@ -1,0 +1,6 @@
+name = "mailserver-inbound-relay"
+main = "src/index.js"
+compatibility_date = "2023-11-15"
+
+[triggers]
+email = true
