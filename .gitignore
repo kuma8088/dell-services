@@ -109,3 +109,9 @@ docs/application/blog/claudedocs/xserver-db-credentials.md
 docs/application/blog/claudedocs/xserver-site-sizes.md
 docs/application/blog/claudedocs/xserver-versions.md
 docs/application/blog/claudedocs/xserver-htaccess*.md
+
+# Cloudflare Workers and Wrangler (NEVER commit these)
+.wrangler-config/
+**/.wrangler/
+cloudflare/**/.env
+cloudflare/**/node_modules/
