@@ -125,6 +125,27 @@
 
 **復旧所要時間**: 30分〜4時間（障害レベルによる）
 
+### 7. 移行計画: Cloudflare Email Worker移行
+
+#### [Cloudflare Email Worker実装手順書 (migration/cloudflare-email-worker-implementation.md)](./migration/cloudflare-email-worker-implementation.md) ⭐ 採用
+- **選定理由**: 月額¥0、エッジ実行、既存インフラ活用
+- Dell側メール受信API実装（FastAPI）
+- Cloudflare Email Worker実装（JavaScript）
+- Cloudflare Tunnel設定更新
+- 本番移行・ロールバック手順
+- 運用・保守ガイド
+
+**実装により達成:**
+- ✅ **EC2廃止**: 月額¥525 → ¥0（100%削減）
+- ✅ **サーバーレス化**: EC2管理作業不要
+- ✅ **高速化**: エッジ実行、コールドスタートなし
+- ✅ **高可用性**: Cloudflare SLA 99.99%
+
+#### [移行オプション比較（参考資料）(migration/cloudflare-email-relay-migration.md)](./migration/cloudflare-email-relay-migration.md)
+- 5つの移行オプション調査結果
+- コスト比較・TCO分析
+- Cloudflare Email Routingの制限分析
+
 ---
 
 ## 🚀 クイックスタート
