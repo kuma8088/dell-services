@@ -58,11 +58,10 @@
   - 現状: blog.webmakeprofit.org 等のサブドメインで運用中（Phase A-1 テストフェーズ）
   - 目標: 本番ドメイン（webmakeprofit.org 等）への移行（Phase A-2）
   - 詳細: `docs/application/blog/issue/I008_production-domain-migration.md`
+  - 次のアクション#007
 
-- [ ] **[#009] 移行先サイトの動作確認（Elementorやプラグインのライセンス等）**
-  - 現状: Elementor Pro・プラグインライセンス状況未確認
-  - 目標: ライセンス確認と本番環境での動作検証
-  - 詳細: `docs/application/blog/issue/I009_site-validation.md`
+
+- [ ] **[#013] SMTP経由でもメールが迷惑メール疑惑をGmailからかけられる対策**
 
 ---
 
@@ -70,14 +69,7 @@
 
 現在進行中のタスク。
 
-- [ ] **[#011] blog.kuma8088.com サブディレクトリ表示問題（Phase 011）** ⚠️
-  - 現状: blog.kuma8088.com配下10サイトでElementorプレビュー・静的ファイル404エラー
-  - 根本原因: Cloudflare HTTPS検出欠落 + Nginx複雑な設定
-  - 目標: 3つの解決アプローチから選択・実装
-    - Phase 011-A（緊急）: Nginx設定修正
-    - Phase 011-B（中期）: URL置換 + WAF調整
-    - Phase 011-C（恒久）: 独立サブドメイン化 ★推奨
-  - 詳細: `docs/application/blog/phase-011-subdirectory-display-issue.md`
+
 
 ---
 
@@ -95,6 +87,20 @@
   - 実装: Dockerfile + ssmtp + docker-compose.yml による恒久対応
   - 成果: 全14サイトで wp_mail() 機能が動作、Postfix 経由でメール送信可能
   - 詳細: `docs/application/blog/issue/Completed/C001_Xserver-migration-issues.md` Phase 1完了
+
+- [x] **[#011] blog.kuma8088.com サブディレクトリ表示問題（Phase 011）** ⚠️
+  - 現状: blog.kuma8088.com配下10サイトでElementorプレビュー・静的ファイル404エラー
+  - 根本原因: Cloudflare HTTPS検出欠落 + Nginx複雑な設定
+  - 目標: 3つの解決アプローチから選択・実装
+    - Phase 011-A（緊急）: Nginx設定修正
+    - Phase 011-B（中期）: URL置換 + WAF調整
+    - Phase 011-C（恒久）: 独立サブドメイン化 ★推奨
+  - 詳細: `docs/application/blog/phase-011-subdirectory-display-issue.md`
+
+- [x] **[#009] 移行先サイトの動作確認（Elementorやプラグインのライセンス等）**
+  - 現状: Elementor Pro・プラグインライセンス状況未確認
+  - 目標: ライセンス確認と本番環境での動作検証
+  - 詳細: `docs/application/blog/issue/I009_site-validation.md`
 
 ---
 
