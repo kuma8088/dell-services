@@ -113,7 +113,13 @@ services:
     container_name: mailserver-dovecot
     hostname: dovecot
     restart: always
-    command: ["/usr/sbin/dovecot", "-F", "-c", "/etc/dovecot/custom/dovecot.conf"]
+    command:
+      - /bin/sh
+      - -c
+      - |
+        touch /var/log/dovecot.log /var/log/dovecot-info.log /var/log/dovecot-debug.log
+        tail -n0 -F /var/log/dovecot.log /var/log/dovecot-info.log /var/log/dovecot-debug.log &
+        exec /usr/sbin/dovecot -F -c /etc/dovecot/custom/dovecot.conf
     networks:
       mailserver_network:
         ipv4_address: 172.20.0.30
@@ -201,6 +207,30 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  # Cloudflare Email Routing受信用API
+  mailserver-api:
+    build: ./api
+    container_name: mailserver-api
+    hostname: mailserver-api
+    restart: always
+    networks:
+      mailserver_network:
+        ipv4_address: 172.20.0.100
+    environment:
+      - API_KEY=${MAILSERVER_API_KEY}
+      - LMTP_HOST=dovecot
+      - LMTP_PORT=2525
+      - TZ=${TZ}
+    volumes:
+      - ./logs/mailserver-api:/var/log/mailserver-api
+    depends_on:
+      - dovecot
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   # Roundcube Webmail
   roundcube:
