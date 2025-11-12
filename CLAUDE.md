@@ -43,10 +43,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **現在の構成**:
 - ✅ Dell: Docker Compose環境
-  - Mailserver（8コンテナ: Postfix, Dovecot, MariaDB等）
+  - Mailserver（**9コンテナ**: Postfix, Dovecot, MariaDB, mailserver-api等）
   - Blog System（4コンテナ: WordPress, Nginx, MariaDB, Cloudflared - **16サイト**）
-- ✅ Cloudflare: **Email Worker稼働中**（MX受信 → Dell LMTPリレー、月額¥0）
+- ✅ Cloudflare: **Email Worker稼働中**（MX受信 → Dell mailserver-api (FastAPI) → LMTP、月額¥0）
 - ❌ EC2 MX Gateway: **廃止済み**（2025-11-12にCloudflare Email Workerへ移行完了）
+- ❌ Tailscale VPN: **不要に**（Cloudflare Tunnel経由で通信）
 - 📝 KVM環境: 構築済みだが現在未使用（将来的な仮想化用）
 
 **最新の統合・改善**（2025-11-12完了）:
@@ -60,7 +61,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **重要:**
 - Dell側PostfixはDockerコンテナで稼働。systemd/journalctlではなく、`docker logs`/`docker exec`を使用。
-- MX受信はCloudflare Email Workerが処理（EC2 MX Gatewayは廃止済み）。
+- **MX受信フロー**: Internet → Cloudflare Email Routing → Email Worker (JS) → Cloudflare Tunnel → mailserver-api (FastAPI) → Dovecot LMTP
+- **送信フロー**: Mail Client → Postfix (Dell) → SendGrid Relay → Internet
+- EC2 MX Gateway、Tailscale VPNは廃止済み。
 
 **ハードウェア制約**:
 - CPU: 6コア/12スレッド、RAM: 32GB、Storage: 3.6TB HDD + 390GB SSD
@@ -76,7 +79,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Phase 3: Docker環境構築 ✅ 完了
 - KVM環境構築 ✅ 完了（現在未使用）
 
-**Mailserver（8コンテナ稼働中）**:
+**Mailserver（9コンテナ稼働中）**:
 - Phase 10: ローカルバックアップシステム ✅ 完了
   - 日次/週次自動バックアップ（cron設定済み）
   - 38テストケース実装（TDD開発）
@@ -146,13 +149,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 📌 現在の稼働状況
 
 **Dell WorkStation**:
-- Mailserver: 8コンテナ稼働（安定）
+- Mailserver: **9コンテナ稼働**（安定）- mailserver-api追加
 - Blog System: 4コンテナ + 16サイト稼働（本番運用中）
 - リソース使用: RAM 15GB/32GB、SSD余裕あり、HDD 95.4GB/3.4TB
 
-**EC2**:
-- Postfix MX Gateway: Dockerコンテナで稼働（安定）
-- Terraform管理（IaC完備）
+**Cloudflare**:
+- Email Routing + Email Worker: MX受信処理（サーバーレス、月額¥0）
+- Cloudflare Tunnel: Blog + Mail API公開（セキュア、月額¥0）
+
+**AWS**:
+- S3 Backup: オフサイトバックアップ（Object Lock COMPLIANCE）
+- CloudWatch + SNS: コスト監視
 
 **自動化運用**:
 - 日次バックアップ（AM 3:00）: Mailserver + Blog
