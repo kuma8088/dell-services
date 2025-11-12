@@ -27,23 +27,22 @@
 │                        Internet                                     │
 └───────┬──────────────────────────────────┬─────────────────────────┘
         │                                  │
-        │ MX Record                        │ HTTPS/Blog Access
+        │ MX (Port 25)                     │ HTTPS/Blog Access
         ▼                                  ▼
 ┌────────────────────┐           ┌────────────────────┐
-│   AWS EC2 (t4g)    │           │  Cloudflare Edge   │
-│  MX Gateway        │           │  - SSL/TLS Auto    │
-│  - Postfix (Docker)│           │  - DDoS Protection │
-│  - Tailscale VPN   │           │  - CDN             │
-│  - Port 25 (SMTP)  │           └─────────┬──────────┘
-└─────────┬──────────┘                     │ Tunnel (outbound only)
-          │ Tailscale VPN                  │
-          │ (LMTP 2525)                    │
+│ Cloudflare Edge    │           │  Cloudflare Edge   │
+│ - Email Routing    │           │  - SSL/TLS Auto    │
+│ - Email Worker     │           │  - DDoS Protection │
+│   (Serverless)     │           │  - CDN             │
+└─────────┬──────────┘           └─────────┬──────────┘
+          │ HTTPS POST                     │ Tunnel (outbound only)
+          │ (via Tunnel)                   │
           ▼                                ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │   Dell WorkStation (Rocky Linux 9.6)                              │
 │   Multi-Service Docker Compose Environment                        │
 │                                                                    │
-│   ┌─── Mailserver (8 Containers) ────────────────────────┐       │
+│   ┌─── Mailserver (9 Containers) ────────────────────────┐       │
 │   │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
 │   │  │ Postfix  │  │ Dovecot  │  │ MariaDB  │          │       │
 │   │  │(SendGrid)│  │(IMAP/POP)│  │(User/RC) │          │       │
@@ -51,9 +50,10 @@
 │   │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
 │   │  │  ClamAV  │  │  Rspamd  │  │Roundcube │          │       │
 │   │  └──────────┘  └──────────┘  └──────────┘          │       │
-│   │  ┌──────────┐  ┌──────────┐                         │       │
-│   │  │UserMgmt  │  │  Nginx   │                         │       │
-│   │  └──────────┘  └──────────┘                         │       │
+│   │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
+│   │  │UserMgmt  │  │  Nginx   │  │ Mail API │          │       │
+│   │  │          │  │          │  │(FastAPI) │          │       │
+│   │  └──────────┘  └──────────┘  └──────────┘          │       │
 │   └────────────────────────────────────────────────────┘       │
 │                                                                    │
 │   ┌─── Blog System (4 Containers) ───────────────────────┐       │
@@ -107,16 +107,16 @@
 | **Reverse Proxy** | Nginx | 1.26 | HTTPS終端、Tailscale証明書 |
 | **User Management** | Flask + Python | 3.11 | ユーザー管理WebAPI（Phase 11） |
 
-### **AWS Infrastructure**
+### **Cloud Infrastructure**
 
-| サービス | 用途 | 実装 |
-|---------|------|------|
-| **EC2** | MX Gateway (t4g.nano ARM64) | Docker Postfix |
-| **S3** | オフサイトバックアップ (Object Lock) | 日次レプリケーション |
-| **IAM** | 最小権限ロール (Uploader/Admin) | Terraform管理 |
-| **CloudWatch** | コスト監視 (10円/100円閾値) | SNS通知連携 |
-| **Secrets Manager** | Tailscale Auth Key, SendGrid API Key | IAM Role経由取得 |
-| **VPC** | ネットワーク分離 | Multi-AZ対応 |
+| サービス | プロバイダ | 用途 | 実装 |
+|---------|-----------|------|------|
+| **Email Routing** | Cloudflare | MX受信 (無料) | Email Worker連携 |
+| **Email Worker** | Cloudflare | サーバーレスメール処理 | FastAPI転送 |
+| **Cloudflare Tunnel** | Cloudflare | セキュアな公開 (無料) | Blog + Mail API |
+| **S3** | AWS | オフサイトバックアップ (Object Lock) | 日次レプリケーション |
+| **IAM** | AWS | 最小権限ロール (Uploader/Admin) | Terraform管理 |
+| **CloudWatch** | AWS | コスト監視 (10円/100円閾値) | SNS通知連携 |
 
 ### **Development & Testing**
 
@@ -213,12 +213,19 @@ resource "aws_s3_bucket_object_lock_configuration" "backup_lock" {
 
 **月額想定コスト** (円建て):
 ```
-EC2 t4g.nano:      ~$3.50/月  (≈490円)
-S3 STANDARD:       ~$0.025/GB/月 (≈3.5円/GB)
-CloudWatch Logs:   ~$0.50/月  (≈70円)
-SNS:               Free tier
-Total:             ~$5/月 (≈700円)
+Cloudflare Email Routing:  $0/月  (完全無料)
+Cloudflare Email Worker:   $0/月  (無料枠内: 10万リクエスト/日)
+Cloudflare Tunnel:         $0/月  (完全無料)
+S3 STANDARD:               ~$0.025/GB/月 (≈3.5円/GB)
+CloudWatch Logs:           ~$0.50/月  (≈70円)
+SNS:                       Free tier
+Total:                     ~$1/月 (≈140円)
 ```
+
+**コスト削減実績**:
+- ✅ EC2廃止により **月額¥525 → ¥0** (2025-11-12完了)
+- ✅ Tailscale VPN不要により管理コスト削減
+- ✅ サーバーレス化により保守作業削減
 
 **コスト監視**:
 - CloudWatch Alarms: 10円 (WARNING) / 100円 (CRITICAL)
@@ -720,6 +727,10 @@ terraform show
 
 ---
 
-**Last Updated**: 2025-11-09
-**Version**: 1.1.0
-**Status**: Multi-Service Production (Mailserver ✅ + Blog System Phase A-1 ✅)
+**Last Updated**: 2025-11-12
+**Version**: 1.2.0
+**Status**: Multi-Service Production (Mailserver ✅ + Blog System ✅)
+**Recent Updates**:
+- ✅ Cloudflare Email Worker実装完了 (2025-11-12)
+- ✅ EC2 MX Gateway廃止、月額コスト¥525削減
+- ✅ Blog System Phase A-2完了 (本番ドメイン移行)
