@@ -432,6 +432,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 #### 1.4 Elementorキャッシュクリア
 
 ```bash
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/kuma8088-elementordemo1 \
   --allow-root
@@ -660,6 +661,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 ##### 2.4 キャッシュクリア
 
 ```bash
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/fx-trader-life \
   --allow-root
@@ -804,6 +806,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 ##### 2.4 キャッシュクリア
 
 ```bash
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/webmakeprofit \
   --allow-root
@@ -877,6 +880,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
   SELECT option_value FROM wp_webmakesprofit.wp_options WHERE option_name IN ('siteurl', 'home');"
 
 # キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css --path=/var/www/html/webmakesprofit --allow-root
 docker compose exec wordpress wp cache flush --path=/var/www/html/webmakesprofit --allow-root
 
@@ -935,6 +939,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
   SELECT option_value FROM wp_toyota_phv.wp_options WHERE option_name IN ('siteurl', 'home');"
 
 # キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css --path=/var/www/html/toyota-phv --allow-root
 docker compose exec wordpress wp cache flush --path=/var/www/html/toyota-phv --allow-root
 
@@ -994,6 +999,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
   SELECT option_value FROM wp_kuma8088.wp_options WHERE option_name IN ('siteurl', 'home');"
 
 # キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css --path=/var/www/html/kuma8088 --allow-root
 docker compose exec wordpress wp cache flush --path=/var/www/html/kuma8088 --allow-root
 
@@ -1140,6 +1146,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 ##### 3.4 キャッシュクリア
 
 ```bash
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/fx-trader-life-mfkc \
   --allow-root
@@ -1158,52 +1165,68 @@ curl -I https://mfkc.fx-trader-life.com
 
 ##### 3.6 旧URL → 新URL 301リダイレクト設定
 
-**重要**: fx-trader-life.com は本番移行済み（Phase 2）のため、
-fx-trader-life.conf の**両方のserverブロック**にサブディレクトリリダイレクトを追加します。
-
-**方針**:
-- 本番ドメイン用serverブロック（fx-trader-life.com）に `/MFKC` リダイレクト追加
-- 旧ドメイン用serverブロック（blog.fx-trader-life.com）に `/MFKC` リダイレクト追加
+`fx-trader-life.com` 系サブサイトは `blog.fx-trader-life.com/<subdir>` と
+`fx-trader-life.com/<subdir>` のどちらからもアクセスされていたため、
+**両方の server{} ブロック**にリダイレクト用 `location` を追加する。
+以下のヘルパーは `SUBDIR`（旧サブディレクトリ）と `TARGET_HOST`
+（新サブドメイン）を差し替えて再利用できる。
 
 ```bash
 cd /opt/onprem-infra-system/project-root-infra/services/blog
 
-# fx-trader-life.confの本番ドメインserverブロックに追加
-# location / の前に挿入（sedで自動挿入）
-sed -i '/location \/ {/i\
-\
-    # Redirect MFKC subdirectory to subdomain\
-    location /MFKC {\
-        return 301 https://mfkc.fx-trader-life.com$request_uri;\
-    }\
-    location /MFKC/ {\
-        return 301 https://mfkc.fx-trader-life.com$request_uri;\
-    }' config/nginx/conf.d/fx-trader-life.conf
+SUBDIR=MFKC
+TARGET_HOST=mfkc.fx-trader-life.com
 
-# 旧ドメインserverブロックにも追加
-# return 301 の前に挿入
-sed -i '/server_name blog\.fx-trader-life\.com;/a\
-\
-    # Redirect MFKC subdirectory to subdomain\
-    location /MFKC {\
-        return 301 https://mfkc.fx-trader-life.com$request_uri;\
-    }\
-    location /MFKC/ {\
-        return 301 https://mfkc.fx-trader-life.com$request_uri;\
-    }' config/nginx/conf.d/fx-trader-life.conf
+python - <<'PY'
+import os, pathlib
 
-# 設定確認
-grep -A 3 "Redirect MFKC" config/nginx/conf.d/fx-trader-life.conf
+slug = os.environ["SUBDIR"].strip("/")
+target = os.environ["TARGET_HOST"]
+path = pathlib.Path("config/nginx/conf.d/fx-trader-life.conf")
+text = path.read_text()
 
-# 設定テスト
+root_marker = "    # Root domain site"
+root_snippet = f"""    # Redirect /{slug} to https://{target} (root domain fallback)
+    location /{slug} {{
+        return 301 https://{target}$request_uri;
+    }}
+    location /{slug}/ {{
+        return 301 https://{target}$request_uri;
+    }}
+
+"""
+
+blog_marker = "    return 301 https://fx-trader-life.com$request_uri;"
+blog_snippet = f"""    # Redirect /{slug} to https://{target} (blog.* fallback)
+    location /{slug} {{
+        return 301 https://{target}$request_uri;
+    }}
+    location /{slug}/ {{
+        return 301 https://{target}$request_uri;
+    }}
+
+"""
+
+if f"/{slug}" not in text:
+    text = text.replace(root_marker, root_snippet + root_marker, 1)
+
+if blog_snippet not in text:
+    text = text.replace(blog_marker, blog_snippet + blog_marker, 1)
+
+path.write_text(text)
+PY
+
 docker compose exec nginx nginx -t
 docker compose exec nginx nginx -s reload
 
-# リダイレクトテスト
-curl -I https://blog.fx-trader-life.com/MFKC  # 旧ドメイン
-curl -I https://fx-trader-life.com/MFKC  # 本番ドメイン
-# 両方とも期待値: HTTP/1.1 301 ... Location: https://mfkc.fx-trader-life.com/MFKC
+curl -I https://blog.fx-trader-life.com/${SUBDIR}    # 旧ドメイン
+curl -I https://fx-trader-life.com/${SUBDIR}         # 本番ドメイン
+# 期待値: Location: https://${TARGET_HOST}/${SUBDIR}
 ```
+
+> SUBDIR/TARGET_HOST を `4-line-trade` / `4line.fx-trader-life.com`,
+> `lp` / `lp.fx-trader-life.com` に入れ替えて同じヘルパーを実行すれば、
+> 4line・lp サイト分のリダイレクトも一括で追加できる。
 
 ---
 
@@ -1214,7 +1237,60 @@ curl -I https://fx-trader-life.com/MFKC  # 本番ドメイン
 **サイト7: blog.fx-trader-life.com/4-line-trade → 4line.fx-trader-life.com**
 ```bash
 # 3.1 Cloudflare Tunnel: 4line.fx-trader-life.com
-# 3.2 Nginx: config/nginx/conf.d/4line-fx-trader-life.conf 作成（mfkcと同様）
+
+# 3.2 Nginx: config/nginx/conf.d/4line-fx-trader-life.conf 作成
+cat > config/nginx/conf.d/4line-fx-trader-life.conf <<'EOF'
+# Virtual host: 4line.fx-trader-life.com
+# Production subdomain for 4-line-trade
+server {
+    listen 80;
+    server_name 4line.fx-trader-life.com;
+
+    root /var/www/html/fx-trader-life-4line;
+    index index.php index.html;
+
+    access_log /var/log/nginx/4line-fx-trader-life-access.log;
+    error_log /var/log/nginx/4line-fx-trader-life-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1243,6 +1319,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/fx-trader-life-4line \
   --allow-root
@@ -1250,13 +1327,69 @@ docker compose exec wordpress wp elementor flush-css \
 # 3.5 動作確認
 curl -I https://4line.fx-trader-life.com
 
-# 3.6 リダイレクト設定（Phase 2完了後、fx-trader-life-redirect.confに追加）
+# 3.6 旧URL → 新URL 301リダイレクト
+# SUBDIR=4-line-trade / TARGET_HOST=4line.fx-trader-life.com を指定して
+# 3.6 の Python ヘルパーを再実行し、blog.* と fx-trader-life.com の両方に
+# location ブロックを追加 → nginx -t → nginx -s reload → 両URLで curl -I を実施
 ```
 
 **サイト8: blog.fx-trader-life.com/lp → lp.fx-trader-life.com**
 ```bash
 # 3.1 Cloudflare Tunnel: lp.fx-trader-life.com
+
 # 3.2 Nginx: config/nginx/conf.d/lp-fx-trader-life.conf 作成
+cat > config/nginx/conf.d/lp-fx-trader-life.conf <<'EOF'
+# Virtual host: lp.fx-trader-life.com
+# Production subdomain for LP site
+server {
+    listen 80;
+    server_name lp.fx-trader-life.com;
+
+    root /var/www/html/fx-trader-life-lp;
+    index index.php index.html;
+
+    access_log /var/log/nginx/lp-fx-trader-life-access.log;
+    error_log /var/log/nginx/lp-fx-trader-life-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1285,18 +1418,76 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/fx-trader-life-lp \
   --allow-root
 
 # 3.5 動作確認
 curl -I https://lp.fx-trader-life.com
+
+# 3.6 旧URL → 新URL 301リダイレクト
+# SUBDIR=lp / TARGET_HOST=lp.fx-trader-life.com で 3.6 の Python ヘルパーを再実行し、
+# blog.* および fx-trader-life.com server{} に location を追加 → nginx再読み込み →
+# https://blog.fx-trader-life.com/lp と https://fx-trader-life.com/lp の両方で 301 を確認
 ```
 
 **サイト9: blog.webmakeprofit.org/coconala → coconala.webmakeprofit.org**
 ```bash
 # 3.1 Cloudflare Tunnel: coconala.webmakeprofit.org
+
 # 3.2 Nginx: config/nginx/conf.d/coconala-webmakeprofit.conf 作成
+cat > config/nginx/conf.d/coconala-webmakeprofit.conf <<'EOF'
+# Virtual host: coconala.webmakeprofit.org
+server {
+    listen 80;
+    server_name coconala.webmakeprofit.org;
+
+    root /var/www/html/webmakeprofit-coconala;
+    index index.php index.html;
+
+    access_log /var/log/nginx/coconala-webmakeprofit-access.log;
+    error_log /var/log/nginx/coconala-webmakeprofit-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1325,6 +1516,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/webmakeprofit-coconala \
   --allow-root
@@ -1336,7 +1528,59 @@ curl -I https://coconala.webmakeprofit.org
 **サイト10: blog.kuma8088.com/cameramanual → camera.kuma8088.com**
 ```bash
 # 3.1 Cloudflare Tunnel: camera.kuma8088.com
+
 # 3.2 Nginx: config/nginx/conf.d/camera-kuma8088.conf 作成
+cat > config/nginx/conf.d/camera-kuma8088.conf <<'EOF'
+# Virtual host: camera.kuma8088.com
+server {
+    listen 80;
+    server_name camera.kuma8088.com;
+
+    root /var/www/html/kuma8088-cameramanual;
+    index index.php index.html;
+
+    access_log /var/log/nginx/camera-kuma8088-access.log;
+    error_log /var/log/nginx/camera-kuma8088-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1365,6 +1609,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/kuma8088-cameramanual \
   --allow-root
@@ -1381,7 +1626,59 @@ curl -I https://camera.kuma8088.com
 **サイト12: blog.kuma8088.com/elementordemo02 → demo2.kuma8088.com**
 ```bash
 # 3.1 Cloudflare Tunnel: demo2.kuma8088.com
+
 # 3.2 Nginx: config/nginx/conf.d/demo2-kuma8088.conf 作成
+cat > config/nginx/conf.d/demo2-kuma8088.conf <<'EOF'
+# Virtual host: demo2.kuma8088.com
+server {
+    listen 80;
+    server_name demo2.kuma8088.com;
+
+    root /var/www/html/kuma8088-elementordemo02;
+    index index.php index.html;
+
+    access_log /var/log/nginx/demo2-kuma8088-access.log;
+    error_log /var/log/nginx/demo2-kuma8088-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1410,6 +1707,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/kuma8088-elementordemo02 \
   --allow-root
@@ -1421,7 +1719,59 @@ curl -I https://demo2.kuma8088.com
 **サイト13: blog.kuma8088.com/elementor-demo-03 → demo3.kuma8088.com**
 ```bash
 # 3.1 Cloudflare Tunnel: demo3.kuma8088.com
+
 # 3.2 Nginx: config/nginx/conf.d/demo3-kuma8088.conf 作成
+cat > config/nginx/conf.d/demo3-kuma8088.conf <<'EOF'
+# Virtual host: demo3.kuma8088.com
+server {
+    listen 80;
+    server_name demo3.kuma8088.com;
+
+    root /var/www/html/kuma8088-elementor-demo-03;
+    index index.php index.html;
+
+    access_log /var/log/nginx/demo3-kuma8088-access.log;
+    error_log /var/log/nginx/demo3-kuma8088-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1450,6 +1800,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/kuma8088-elementor-demo-03 \
   --allow-root
@@ -1461,7 +1812,59 @@ curl -I https://demo3.kuma8088.com
 **サイト14: blog.kuma8088.com/elementor-demo-04 → demo4.kuma8088.com**
 ```bash
 # 3.1 Cloudflare Tunnel: demo4.kuma8088.com
+
 # 3.2 Nginx: config/nginx/conf.d/demo4-kuma8088.conf 作成
+cat > config/nginx/conf.d/demo4-kuma8088.conf <<'EOF'
+# Virtual host: demo4.kuma8088.com
+server {
+    listen 80;
+    server_name demo4.kuma8088.com;
+
+    root /var/www/html/kuma8088-elementor-demo-04;
+    index index.php index.html;
+
+    access_log /var/log/nginx/demo4-kuma8088-access.log;
+    error_log /var/log/nginx/demo4-kuma8088-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1490,6 +1893,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/kuma8088-elementor-demo-04 \
   --allow-root
@@ -1501,7 +1905,59 @@ curl -I https://demo4.kuma8088.com
 **サイト15: blog.kuma8088.com/ec02test → ec-test.kuma8088.com**
 ```bash
 # 3.1 Cloudflare Tunnel: ec-test.kuma8088.com
+
 # 3.2 Nginx: config/nginx/conf.d/ec-test-kuma8088.conf 作成
+cat > config/nginx/conf.d/ec-test-kuma8088.conf <<'EOF'
+# Virtual host: ec-test.kuma8088.com
+server {
+    listen 80;
+    server_name ec-test.kuma8088.com;
+
+    root /var/www/html/kuma8088-ec02test;
+    index index.php index.html;
+
+    access_log /var/log/nginx/ec-test-kuma8088-access.log;
+    error_log /var/log/nginx/ec-test-kuma8088-error.log;
+
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass wordpress:9000;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param HTTP_X_FORWARDED_PROTO https;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+
+    location = /favicon.ico {
+        log_not_found off;
+        access_log off;
+    }
+
+    location = /robots.txt {
+        log_not_found off;
+        access_log off;
+        allow all;
+    }
+
+    location ~* \.(css|gif|ico|jpeg|jpg|js|png|svg|woff|woff2)$ {
+        expires max;
+        log_not_found off;
+    }
+}
+EOF
+
+docker compose exec nginx nginx -t
+docker compose exec nginx nginx -s reload
 
 # 3.3 WordPress URL置換（HTTPS→HTTP順）
 # HTTPS版（メイン）
@@ -1530,6 +1986,7 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 "
 
 # 3.4 キャッシュクリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/kuma8088-ec02test \
   --allow-root
@@ -1559,7 +2016,6 @@ cd /opt/onprem-infra-system/project-root-infra/services/blog
 
 # 1. Nginx設定を旧構成に戻す
 cp config/nginx/conf.d/fx-trader-life.conf.pre-migration config/nginx/conf.d/fx-trader-life.conf
-rm -f config/nginx/conf.d/fx-trader-life-redirect.conf
 docker compose exec nginx nginx -t
 docker compose exec nginx nginx -s reload
 
@@ -1623,7 +2079,7 @@ curl -I https://blog.fx-trader-life.com
 - [ ] WordPress URL置換（dry-run → 本実行）
 - [ ] キャッシュクリア
 - [ ] 動作確認
-- [ ] 301リダイレクト設定（fx-trader-life-redirect.conf）
+- [ ] 301リダイレクト設定（fx-trader-life.conf の blog.* server で確認）
 - [ ] 24時間安定動作確認
 
 #### webmakeprofit.org
@@ -1739,6 +2195,7 @@ docker compose exec wordpress ls -la /var/www/html/fx-trader-life/wp-content/upl
 
 ```bash
 # キャッシュ再クリア
+# Elementor導入サイトのみ（未導入ならスキップ）
 docker compose exec wordpress wp elementor flush-css \
   --path=/var/www/html/fx-trader-life \
   --allow-root
@@ -1775,9 +2232,10 @@ docker compose exec mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
 
 ```bash
 # Nginx設定確認（locationブロックの順序）
-docker compose exec nginx cat /etc/nginx/conf.d/fx-trader-life-redirect.conf
+docker compose exec nginx sed -n '1,200p' /etc/nginx/conf.d/fx-trader-life.conf | grep -n "Redirect /"
 
-# 注意: location /MFKC は location / より前に配置する必要がある
+# 注意: location /<subdir> は本番serverの location / より前、
+# blog.* server では return 301 の前に配置されていること
 
 # Cloudflare Tunnel確認
 # Zero Trust Dashboard → Networks → Tunnels → blog-tunnel

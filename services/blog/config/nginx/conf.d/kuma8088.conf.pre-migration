@@ -4,7 +4,7 @@
 # Refactored: 2025-11-11 - Subdirectory sites extracted to separate file
 server {
     listen 80;
-    server_name kuma8088.com www.kuma8088.com gwpbk492.xsrv.jp;
+    server_name blog.kuma8088.com;
 
     root /var/www/html/kuma8088;
     index index.php index.html;
@@ -66,10 +66,3 @@ server {
     }
 }
 
-
-# Redirect old domain to production domain
-server {
-    listen 80;
-    server_name blog.kuma8088.com blog.gwpbk492.xsrv.jp;
-    return 301 https://kuma8088.com$request_uri;
-}

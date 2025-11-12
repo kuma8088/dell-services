@@ -148,6 +148,103 @@ smtpd_recipient_restrictions =
 
 ---
 
+## 🧭 作業手順まとめ
+
+1. **Phase 1: 事前準備**  
+   - Cloudflare Email Routingの仕様や制限を確認し、Dell Postfix側でCloudflare経路を想定した設定案（`mynetworks`のIPレンジ入れ替えや`relay_domains`整理）を作成。  
+   - テスト環境を用意し、Cloudflare経由のメール受信がDellで処理できるか事前検証する。
+2. **Phase 2: DNS変更準備**  
+   - 現行MXレコードとTTLを棚卸し、切替24時間前にはTTLを短縮。  
+   - Cloudflareで利用するMX/TXTレコード値を確定し、SPF/DKIM/DMARCの整合を取る。
+3. **Phase 3: 移行実施**  
+   - Cloudflare Email Routingに転送先（Dell Postfix/Tailscale経路）を登録し、ルールを有効化。  
+   - MXをCloudflare指定値へ切り替え、24–48時間はDNS伝播と実受信を監視しながら複数ドメインで受信テストを実施。
+4. **Phase 4: EC2廃止**  
+   - 1週間以上、Cloudflare経由の安定稼働を確認しつつログ監視。  
+   - 問題なければEC2を停止→さらに2週間監視→削除→Terraform state反映の順でクリーンアップ。
+5. **リスク対策**  
+   - Cloudflare障害やDNSキャッシュ遅延に備え、段階的にドメインを移行しロールバック手順を明文化。  
+   - 切替期間はDell PostfixログとCloudflareの受信統計を併せて確認し、メール損失がないかを継続チェック。
+
+---
+
+## 🖥️ Dell Postfix設定（コピペ用）
+
+1. **バックアップと環境変数定義**
+   ```bash
+   sudo cp /etc/postfix/main.cf /etc/postfix/main.cf.bak-$(date +%Y%m%d%H%M)
+   sudo cp /etc/postfix/master.cf /etc/postfix/master.cf.bak-$(date +%Y%m%d%H%M)
+
+   MAIL_HOSTNAME="mail.webmakeprofit.org"   # DellのFQDNに置き換え
+   MAIL_DOMAIN="webmakeprofit.org"          # 代表ドメインに置き換え
+   RELAYHOST="[smtp.sendgrid.net]:587"      # 既存の送信リレー設定に合わせる
+   VIRTUAL_DOMAINS="webmakeprofit.org,fx-trader-life.com"  # 受信対象ドメイン一覧
+   ```
+
+2. **main.cf主要パラメータの一括更新**  
+   Cloudflare Email Routing経由での受信を想定し、`postconf -e`で必要箇所を上書きする。
+   ```bash
+   sudo postconf -e "myhostname = ${MAIL_HOSTNAME}"
+   sudo postconf -e "mydomain = ${MAIL_DOMAIN}"
+   sudo postconf -e "myorigin = \$mydomain"
+   sudo postconf -e "mydestination = "
+   sudo postconf -e "relayhost = ${RELAYHOST}"
+   sudo postconf -e "virtual_mailbox_domains = ${VIRTUAL_DOMAINS}"
+   sudo postconf -e 'virtual_transport = lmtp:unix:private/dovecot-lmtp'
+   sudo postconf -e 'smtpd_tls_security_level = may'
+   sudo postconf -e 'smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination'
+   sudo postconf -e 'smtpd_relay_restrictions = permit_mynetworks, defer_unauth_destination'
+   sudo postconf -e 'smtpd_sasl_auth_enable = no'
+   sudo postconf -e 'smtp_sasl_auth_enable = yes'
+   sudo postconf -e 'smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd'
+   sudo postconf -e 'smtp_sasl_security_options = noanonymous'
+   sudo postconf -e 'smtp_tls_security_level = encrypt'
+   sudo postconf -e 'smtp_tls_note_starttls_offer = yes'
+   sudo postconf -e 'message_size_limit = 52428800'
+   ```
+
+3. **Cloudflare IPレンジを `mynetworks` に登録**  
+   Cloudflare Email Routingの公式IPv4レンジをすべて許可し、社内ネットワークと併せて設定する。
+   ```bash
+   sudo postconf -e 'mynetworks = 127.0.0.0/8, 172.20.0.0/24, 172.22.0.0/24, \
+   103.21.244.0/22, 103.22.200.0/22, 103.31.4.0/22, 104.16.0.0/13, 104.24.0.0/14, \
+   108.162.192.0/18, 131.0.72.0/22, 141.101.64.0/18, 162.158.0.0/15, 172.64.0.0/13, \
+   173.245.48.0/20, 188.114.96.0/20, 190.93.240.0/20, 197.234.240.0/22, \
+   198.41.128.0/17'
+   ```
+
+4. **Cloudflare ↔ Dell 直結用の`smtpd_client_restrictions`を強化**  
+   受信クライアントをCloudflare+ローカルに絞り、不正中継を防止する。
+   ```bash
+   sudo postconf -e 'smtpd_client_restrictions = permit_mynetworks, reject'
+   ```
+
+5. **SendGrid資格情報の確認（必要時のみ）**
+   ```bash
+   sudo tee /etc/postfix/sasl_passwd >/dev/null <<'EOF'
+   [smtp.sendgrid.net]:587 apikey:SG.xxxxxx        # 既存のSendGrid APIキーを貼り付け
+   EOF
+   sudo chmod 600 /etc/postfix/sasl_passwd
+   sudo postmap /etc/postfix/sasl_passwd
+   ```
+
+6. **設定のテストと再読み込み**
+   ```bash
+   sudo postfix check
+   sudo systemctl reload postfix
+   sudo postconf | egrep '^(myhostname|mynetworks|relayhost|virtual_mailbox_domains|smtpd_recipient_restrictions) ='
+   ```
+
+7. **疎通確認**
+   ```bash
+   # Cloudflare経由のテストメール（外部Gmail等から送信）を受信
+   sudo tail -f /var/log/maillog
+   ```
+
+これらのコマンドをコピペで実行すれば、Dell側PostfixをCloudflare Email Routing前提の設定へ切り替えられる。
+
+---
+
 ## 📚 関連ドキュメント
 
 - `docs/application/01_improvement+issue.md` - タスク#007
