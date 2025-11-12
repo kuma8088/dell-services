@@ -38,9 +38,11 @@
   - API仕様: [usermgmt/guides/API.md](/docs/application/mailserver/usermgmt/guides/API.md)
   - 設計: [usermgmt/design/](/docs/application/mailserver/usermgmt/design/)
   - フェーズ記録: [usermgmt/phases/](/docs/application/mailserver/usermgmt/phases/)
-- **Cloudflare Email Worker:**
-  - 実装手順書: [migration/cloudflare-email-worker-implementation.md](/docs/application/mailserver/migration/cloudflare-email-worker-implementation.md) ✅ 運用中 (2025-11-12)
-  - EC2 MX Gateway: ❌ 廃止済み（月額¥525→¥0削減）
+- **Cloudflare Email Worker（MX受信システム）:**
+  - 実装手順書: [migration/cloudflare-email-worker-implementation.md](/docs/application/mailserver/migration/cloudflare-email-worker-implementation.md) ✅ **運用中** (2025-11-12)
+  - Workerコード: [migration/worker.js](/docs/application/mailserver/migration/worker.js)
+  - **EC2 MX Gateway**: ❌ **廃止済み**（月額¥525→¥0削減、Tailscale VPNも不要に）
+  - **新しいフロー**: Internet → Cloudflare Email Routing → Email Worker → Cloudflare Tunnel → mailserver-api (FastAPI) → Dovecot LMTP
   - 移行オプション比較（参考資料）: [migration/cloudflare-email-relay-migration.md](/docs/application/mailserver/migration/cloudflare-email-relay-migration.md)
 - **トラブルシューティング:** [/services/mailserver/troubleshoot/README.md](/services/mailserver/troubleshoot/README.md)
 - **Device Access:** [device/README.md](/docs/application/mailserver/device/README.md)
@@ -146,8 +148,8 @@
   - SMTP設定確認: `/services/blog/scripts/check-wp-mail-smtp.sh`
 
 **IaC操作:**
-- EC2 MX Gateway: `/services/mailserver/terraform/` ❌ 廃止済み
 - S3 Backup: `/services/mailserver/terraform/s3-backup/`
+- EC2 MX Gateway: `/services/mailserver/terraform/` ❌ **廃止済み** (2025-11-12)
 
 ## 🏷️ ドキュメント命名規則
 

@@ -125,28 +125,62 @@
 
 **復旧所要時間**: 30分〜4時間（障害レベルによる）
 
-### 7. Cloudflare Email Worker（MX受信）✅ 実装完了
+### 7. Cloudflare Email Worker（MX受信システム）✅ 実装完了・稼働中
 
-#### [Cloudflare Email Worker実装手順書 (migration/cloudflare-email-worker-implementation.md)](./migration/cloudflare-email-worker-implementation.md) ⭐ 運用中
+#### [Cloudflare Email Worker実装手順書 (migration/cloudflare-email-worker-implementation.md)](./migration/cloudflare-email-worker-implementation.md) ⭐ **運用中**
 - **実装完了日**: 2025-11-12
+- **ステータス**: ✅ 本番稼働中（安定）
 - **EC2 MX Gateway**: ❌ 廃止済み
-- Dell側メール受信API実装（FastAPI）
-- Cloudflare Email Worker実装（JavaScript）
-- Cloudflare Tunnel経由LMTP配信
+- **Tailscale VPN**: ❌ 不要に
+- Dell側メール受信API実装（FastAPI、172.20.0.100）
+- Cloudflare Email Worker実装（JavaScript、サーバーレス）
+- Cloudflare Tunnel経由HTTPS通信
+
+**システム構成:**
+```
+9コンテナ稼働中:
+1. Postfix (送信専用、SendGrid Relay)
+2. Dovecot (IMAP/POP3/LMTP)
+3. MariaDB (Roundcube/usermgmt)
+4. Roundcube (Webmail)
+5. Rspamd (スパムフィルタ)
+6. ClamAV (ウイルススキャン)
+7. Nginx (リバースプロキシ)
+8. usermgmt (ユーザー管理)
+9. mailserver-api (メール受信API) ← 新規追加
+```
 
 **達成された効果:**
 - ✅ **EC2廃止**: 月額¥525 → ¥0（100%削減）
-- ✅ **サーバーレス化**: EC2管理作業不要
+- ✅ **サーバーレス化**: EC2管理作業不要、パッチ適用不要
 - ✅ **高速化**: エッジ実行、コールドスタートなし
 - ✅ **高可用性**: Cloudflare SLA 99.99%
+- ✅ **シンプル化**: Tailscale VPN設定不要
 
 **メールフロー（現在）:**
+
+受信フロー:
 ```
-Internet → Cloudflare Email Routing (MX受信)
-         → Cloudflare Email Worker (サーバーレス処理)
-         → Cloudflare Tunnel (暗号化通信)
-         → Dell Postfix (LMTP配信)
-         → Dovecot (メールボックス保存)
+Internet (Port 25)
+  ↓ MX kuma8088.com
+Cloudflare Email Routing (MX受信、無料)
+  ↓
+Cloudflare Email Worker (JavaScript、サーバーレス処理)
+  ↓ HTTPS POST (via Cloudflare Tunnel)
+Dell mailserver-api (FastAPI、172.20.0.100)
+  ↓ LMTP (localhost:2525)
+Dovecot (メールボックス保存)
+```
+
+送信フロー（変更なし）:
+```
+Mail Client (Port 587)
+  ↓ SMTP Submission
+Dell Postfix (172.20.0.20)
+  ↓ SMTP Relay
+SendGrid
+  ↓
+Internet
 ```
 
 #### [移行オプション比較（参考資料）(migration/cloudflare-email-relay-migration.md)](./migration/cloudflare-email-relay-migration.md)
