@@ -30,3 +30,9 @@ variable "object_lock_days" {
   type        = number
   default     = 30
 }
+
+variable "backup_bucket_name" {
+  description = "Name of the S3 bucket that stores mail/blog backups"
+  type        = string
+  default     = "system-backup-workstation"
+}

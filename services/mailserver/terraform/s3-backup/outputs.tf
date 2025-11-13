@@ -4,12 +4,12 @@
 
 output "s3_bucket_name" {
   description = "S3 bucket name for backups"
-  value       = aws_s3_bucket.mailserver_backup.id
+  value       = aws_s3_bucket.websystem_backup.id
 }
 
 output "s3_bucket_arn" {
   description = "S3 bucket ARN"
-  value       = aws_s3_bucket.mailserver_backup.arn
+  value       = aws_s3_bucket.websystem_backup.arn
 }
 
 output "backup_uploader_role_arn" {

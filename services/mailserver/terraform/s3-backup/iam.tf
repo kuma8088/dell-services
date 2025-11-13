@@ -5,6 +5,7 @@
 # IAM Role: Backup Uploader (write-only)
 resource "aws_iam_role" "backup_uploader" {
   name = "mailserver-backup-uploader"
+  max_session_duration = 7200  # 2 hours (for blog backup which takes >1h)
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -41,8 +42,8 @@ resource "aws_iam_role_policy" "backup_uploader" {
           "s3:ListBucket"
         ]
         Resource = [
-          aws_s3_bucket.mailserver_backup.arn,
-          "${aws_s3_bucket.mailserver_backup.arn}/daily/*"
+          aws_s3_bucket.websystem_backup.arn,
+          "${aws_s3_bucket.websystem_backup.arn}/*"
         ]
       },
       {
@@ -95,8 +96,8 @@ resource "aws_iam_role_policy" "backup_admin" {
           "s3:ListBucket"
         ]
         Resource = [
-          aws_s3_bucket.mailserver_backup.arn,
-          "${aws_s3_bucket.mailserver_backup.arn}/*"
+          aws_s3_bucket.websystem_backup.arn,
+          "${aws_s3_bucket.websystem_backup.arn}/*"
         ]
       },
       {

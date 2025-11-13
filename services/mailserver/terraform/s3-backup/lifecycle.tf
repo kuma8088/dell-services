@@ -2,8 +2,8 @@
 # Phase 11-B: S3 Lifecycle Configuration
 # =====================================================
 
-resource "aws_s3_bucket_lifecycle_configuration" "mailserver_backup" {
-  bucket = aws_s3_bucket.mailserver_backup.id
+resource "aws_s3_bucket_lifecycle_configuration" "websystem_backup" {
+  bucket = aws_s3_bucket.websystem_backup.id
 
   rule {
     id     = "daily-backups-lifecycle"
@@ -13,17 +13,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "mailserver_backup" {
       prefix = "daily/"
     }
 
-    transition {
-      days          = var.retention_days
-      storage_class = "GLACIER"
-    }
-
+    # 7日後に削除（災害時バックアップ用、必要なら延長可能）
     expiration {
-      days = 90
-    }
-
-    noncurrent_version_expiration {
-      noncurrent_days = 30
+      days = 7
     }
   }
 }

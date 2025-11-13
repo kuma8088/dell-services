@@ -13,7 +13,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "terraform-state-552927148143"
+    bucket  = "tfstate-workstation"
     key     = "mailserver/s3-backup/terraform.tfstate"
     region  = "ap-northeast-1"
     encrypt = true

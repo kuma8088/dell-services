@@ -7,7 +7,7 @@
 resource "aws_cloudwatch_metric_alarm" "s3_cost_warning" {
   provider = aws.us_east_1
 
-  alarm_name          = "mailserver-s3-backup-cost-warning"
+  alarm_name          = "websystem-s3-backup-cost-warning"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "EstimatedCharges"
@@ -32,7 +32,7 @@ resource "aws_cloudwatch_metric_alarm" "s3_cost_warning" {
 resource "aws_cloudwatch_metric_alarm" "s3_cost_critical" {
   provider = aws.us_east_1
 
-  alarm_name          = "mailserver-s3-backup-cost-critical"
+  alarm_name          = "websystem-s3-backup-cost-critical"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "EstimatedCharges"
@@ -58,7 +58,7 @@ resource "aws_cloudwatch_metric_alarm" "s3_cost_critical" {
 resource "aws_sns_topic" "backup_alerts" {
   provider = aws.us_east_1
 
-  name = "mailserver-s3-backup-alerts"
+  name = "websystem-s3-backup-alerts"
 
   tags = {
     Purpose = "S3 Backup Alert Notifications"
