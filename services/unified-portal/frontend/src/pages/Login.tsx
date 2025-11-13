@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -9,33 +8,26 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function Login() {
-  const navigate = useNavigate()
+  const { login } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setIsLoading(true)
 
     try {
-      // TODO: Implement actual login API call
-      // const response = await fetch('/api/v1/auth/login', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ username, password }),
-      // })
-
-      // Mock login for now
-      if (username === 'admin' && password === 'admin') {
-        navigate('/')
-      } else {
-        setError('ユーザー名またはパスワードが正しくありません')
-      }
+      await login(username, password)
     } catch (err) {
-      setError('ログインに失敗しました')
+      setError(err instanceof Error ? err.message : 'ログインに失敗しました')
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -93,13 +85,13 @@ export default function Login() {
               </div>
             )}
 
-            <Button type="submit" className="w-full">
-              ログイン
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? 'ログイン中...' : 'ログイン'}
             </Button>
           </form>
 
           <div className="mt-4 text-center text-sm text-muted-foreground">
-            <p>デモ: admin / admin</p>
+            <p>デフォルト: admin / change-this-password-in-production</p>
           </div>
         </CardContent>
       </Card>

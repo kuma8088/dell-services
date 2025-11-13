@@ -9,23 +9,34 @@ import WordPressManagement from './pages/WordPressManagement'
 import DomainManagement from './pages/DomainManagement'
 import Login from './pages/Login'
 import Layout from './components/layout/Layout'
+import ProtectedRoute from './components/ProtectedRoute'
+import { AuthProvider } from './contexts/AuthContext'
 
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="/docker" element={<DockerManagement />} />
-          <Route path="/backup" element={<BackupManagement />} />
-          <Route path="/database" element={<DatabaseManagement />} />
-          <Route path="/php" element={<PhpManagement />} />
-          <Route path="/security" element={<SecurityManagement />} />
-          <Route path="/wordpress" element={<WordPressManagement />} />
-          <Route path="/domains" element={<DomainManagement />} />
-        </Route>
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="/docker" element={<DockerManagement />} />
+            <Route path="/backup" element={<BackupManagement />} />
+            <Route path="/database" element={<DatabaseManagement />} />
+            <Route path="/php" element={<PhpManagement />} />
+            <Route path="/security" element={<SecurityManagement />} />
+            <Route path="/wordpress" element={<WordPressManagement />} />
+            <Route path="/domains" element={<DomainManagement />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
     </Router>
   )
 }
