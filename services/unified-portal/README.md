@@ -14,7 +14,7 @@ Blog System と Mailserver を統合管理する Web ベースのポータルシ
 ### 前提条件
 
 - Docker & Docker Compose がインストールされていること
-- Mailserverの `mailserver_network` (172.20.0.0/24) が存在すること
+- Mailserverの `mailserver_mailserver_network` (172.20.0.0/24) が存在すること
 - MariaDB コンテナ (172.20.0.60) が稼働していること
 
 ### 起動方法
@@ -24,10 +24,11 @@ Blog System と Mailserver を統合管理する Web ベースのポータルシ
 cd /opt/onprem-infra-system/project-root-infra/services/unified-portal
 
 # 環境変数設定（初回のみ）
-cat > .env << 'EOF'
-USERMGMT_DB_PASSWORD=your-password-here
-JWT_SECRET_KEY=your-secret-key-here
-EOF
+# .env ファイルを作成し、以下の変数を設定:
+# USERMGMT_DB_PASSWORD: MariaDB接続パスワード
+# JWT_SECRET_KEY: 32-byte hex (セキュアな乱数)
+# ADMIN_PASSWORD: 管理者パスワード (セキュアな乱数)
+# CLOUDFLARE_API_TOKEN: Cloudflare API トークン（オプション）
 
 # コンテナビルド & 起動
 docker compose up -d
@@ -38,14 +39,21 @@ docker compose logs -f
 
 ### アクセス
 
+**ローカル環境**:
 - **Frontend**: http://172.20.0.91 (Nginx経由)
-- **Backend API**: http://172.20.0.90:8000
-- **API Docs**: http://172.20.0.90:8000/docs
+- **Backend API**: http://172.20.0.92:8000
+- **API Docs**: http://172.20.0.92:8000/docs
 
-### デフォルトログイン
+**本番環境** (Cloudflare Tunnel):
+- **Portal**: https://admin.kuma8088.com
+- **API Docs**: https://admin.kuma8088.com/docs
+
+### 認証情報
 
 - **Username**: admin
-- **Password**: admin
+- **Password**: (`.env` ファイルの `ADMIN_PASSWORD`)
+
+⚠️ **セキュリティ**: 本番環境では必ず `.env` ファイルで強力なパスワードを設定してください。
 
 ## 📚 ドキュメント
 
@@ -107,11 +115,28 @@ npm run test:coverage
 
 ### Phase 1 (MVP) - 完了
 
-- ✅ Backend基礎実装（FastAPI + 認証）
-- ✅ Frontend基礎実装（React + Vite + Tailwind）
+**認証システム**:
+- ✅ JWT認証実装 (HS256, 30分有効期限)
+- ✅ Login API (/api/v1/auth/login)
+- ✅ ユーザー確認 API (/api/v1/auth/me)
+- ✅ AuthContext (グローバル認証状態管理)
+- ✅ ProtectedRoute (認証ガード)
+- ✅ Login ページ (実 API 統合)
+
+**管理機能**:
 - ✅ ダッシュボードページ（統計表示）
 - ✅ Docker管理（コンテナ一覧・操作）
 - ✅ バックアップ管理（履歴表示・実行）
+- ✅ Database管理（UI層）
+- ✅ PHP管理（UI層）
+- ✅ Security管理（UI層）
+- ✅ WordPress管理（UI層）
+- ✅ Domain管理（Cloudflare DNS API統合）
+
+**インフラ**:
+- ✅ Docker Compose 環境構築
+- ✅ Nginx リバースプロキシ設定
+- ✅ Cloudflare Tunnel 対応 (admin.kuma8088.com)
 
 ### Phase 2 - 予定
 
@@ -147,12 +172,41 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
+## 🌐 Cloudflare Tunnel デプロイ
+
+### 設定手順
+
+1. **Cloudflare Zero Trust Dashboard** にアクセス:
+   - https://one.dash.cloudflare.com/
+   - Networks → Tunnels → blog-tunnel → Public Hostnames
+
+2. **Public Hostname を追加**:
+   - Hostname: `admin.kuma8088.com`
+   - Service Type: `HTTP`
+   - Service URL: `http://172.20.0.91:80`
+   - HTTP Settings:
+     - HTTP Host Header: `admin.kuma8088.com`
+
+3. **動作確認**:
+   - https://admin.kuma8088.com にアクセス
+   - Login 画面が表示される
+   - 認証情報でログイン成功
+
+詳細: [docs/cloudflare-tunnel-setup.md](docs/cloudflare-tunnel-setup.md)
+
 ## 📝 関連ドキュメント
 
+- [Cloudflare Tunnel 設定ガイド](docs/cloudflare-tunnel-setup.md)
 - [I001: 管理ポータル統合](../../docs/application/blog/issue/active/I001_management-portal-integration.md)
 - [I002: デザイン刷新](../../docs/application/blog/issue/active/I002_portal-design-modernization.md)
 - [I003: 機能拡張](../../docs/application/blog/issue/active/I003_portal-feature-enhancement.md)
+- [I006: Redis Object Cache](../../docs/application/blog/issue/completed/I006_redis-object-cache.md)
 
 ## 📅 更新履歴
 
-- 2025-11-13: プロジェクト初期化、MVP実装完了
+- 2025-11-13:
+  - プロジェクト初期化、MVP実装完了
+  - JWT認証システム実装完了
+  - Docker環境構築完了（env_file対応、IP競合解決）
+  - Cloudflare Tunnel対応（admin.kuma8088.com）
+  - Cloudflare DNS API統合完了
