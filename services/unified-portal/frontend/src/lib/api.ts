@@ -338,6 +338,67 @@ export const databaseAPI = {
 }
 
 // ============================================================================
+// PHP API Types
+// ============================================================================
+
+export interface PHPVersion {
+  version: string
+  major: number
+  minor: number
+  patch: number
+}
+
+export interface PHPModule {
+  name: string
+  version: string
+}
+
+export interface PHPConfig {
+  memory_limit: string
+  max_execution_time: string
+  upload_max_filesize: string
+  post_max_size: string
+  display_errors: string
+  error_reporting: string
+}
+
+export interface PHPStats {
+  version: string
+  modules_count: number
+  memory_limit: string
+}
+
+// ============================================================================
+// PHP API Functions
+// ============================================================================
+
+export const phpAPI = {
+  /**
+   * Get PHP version information
+   */
+  getVersion: () =>
+    apiFetch<PHPVersion>('/api/v1/php/version'),
+
+  /**
+   * List all loaded PHP modules
+   */
+  listModules: () =>
+    apiFetch<PHPModule[]>('/api/v1/php/modules'),
+
+  /**
+   * Get PHP configuration settings
+   */
+  getConfig: () =>
+    apiFetch<PHPConfig>('/api/v1/php/config'),
+
+  /**
+   * Get PHP system statistics
+   */
+  getStats: () =>
+    apiFetch<PHPStats>('/api/v1/php/stats'),
+}
+
+// ============================================================================
 // Export for convenience
 // ============================================================================
 
