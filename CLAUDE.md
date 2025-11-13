@@ -115,6 +115,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ 新規サイト作成ウィザード（`create-new-wp-site.sh`）
 - ✅ WP Mail SMTP一括設定（`setup-wp-mail-smtp.sh`）
 - ✅ Nginx設定自動生成（247行→55行、78%削減）
+- ✅ Redis Object Cache統合（WordPress高速化）
+
+**Unified Portal（統合管理ポータル）**:
+- 🔄 Phase 1実装中 ✅ 一部完了（2025-11-13）
+  - FastAPI + React + TypeScript + Tailwind CSS + shadcn/ui
+  - Xserver風UI/UX設計
+  - **Cloudflare DNS API統合** ✅ 完了
+    - ゾーン一覧表示
+    - DNSレコードCRUD操作
+    - Cloudflareプロキシ設定（オレンジクラウド）
+  - Redis Object Cache統合（WordPress）✅ 完了
+  - 8つの管理ページ実装（UI層のみ、API統合は段階的実装予定）
+    - Dashboard, Docker, Database, PHP, Security, WordPress, Domain, Backup
+  - 関連Issue: I001（ポータル統合）、I002（UI刷新）、I003（機能拡張）、I006（Redis）
 
 ### 📝 計画中・未着手フェーズ
 
@@ -139,9 +153,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **P010**: HTTPS混在コンテンツエラー（Medium）
 - **I004**: バックアップ不具合修正（Critical） - Phase B-1で対応予定
 - **I005**: バックアップ改善（Medium）
-- **I001-I003**: 管理ポータル統合・UI刷新（Low）
-- **I006**: キャッシュシステム（Low）
+- **I001**: 管理ポータル統合（Low） - 🔄 **実装中**（Unified Portal Phase 1）
+- **I002**: ポータルUI刷新（Low） - 🔄 **実装中**（Xserver風UI完了）
+- **I003**: ポータル機能拡張（Low） - 🔄 **実装中**（8管理ページ実装中）
+- **I006**: Redis Object Cache（Low） - ✅ **完了**（2025-11-13）
 - **I007**: Email Routing移行（Low）
+
+**Unified Portal（新規開発）**:
+- **Cloudflare DNS統合**: ✅ **完了**（2025-11-13）
+- **残りAPI統合**: 🔄 **実装予定**（Docker, Database, PHP, Security, WordPress, Backup）
 
 **Mailserver**:
 - 現在アクティブな問題なし（安定稼働中）
@@ -150,12 +170,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Dell WorkStation**:
 - Mailserver: **9コンテナ稼働**（安定）- mailserver-api追加
-- Blog System: 4コンテナ + 16サイト稼働（本番運用中）
+- Blog System: 4コンテナ + Redis + 16サイト稼働（本番運用中）
+- Unified Portal: 🔄 **開発中**（ローカル開発環境）
+  - Backend: FastAPI (http://localhost:8000)
+  - Frontend: React + Vite (http://localhost:5173)
 - リソース使用: RAM 15GB/32GB、SSD余裕あり、HDD 95.4GB/3.4TB
 
 **Cloudflare**:
 - Email Routing + Email Worker: MX受信処理（サーバーレス、月額¥0）
 - Cloudflare Tunnel: Blog + Mail API公開（セキュア、月額¥0）
+- DNS管理: Unified PortalからAPI経由で操作可能 ✅
 
 **AWS**:
 - S3 Backup: オフサイトバックアップ（Object Lock COMPLIANCE）
