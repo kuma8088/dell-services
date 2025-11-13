@@ -98,10 +98,11 @@ async def root() -> JSONResponse:
 
 
 # Import and register routers
-from app.routers import domains, dashboard
+from app.routers import domains, dashboard, docker
 
 app.include_router(domains.router)
 app.include_router(dashboard.router)
+app.include_router(docker.router)
 
 # Future routers (to be implemented)
 # from app.routers import auth, docker, backup, websocket
