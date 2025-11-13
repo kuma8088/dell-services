@@ -305,6 +305,39 @@ export const wordpressAPI = {
 }
 
 // ============================================================================
+// Database API Types
+// ============================================================================
+
+export interface DatabaseInfo {
+  name: string
+  size_mb: number
+}
+
+export interface DatabaseStats {
+  total_databases: number
+  total_size_mb: number
+  mariadb_version: string
+}
+
+// ============================================================================
+// Database API Functions
+// ============================================================================
+
+export const databaseAPI = {
+  /**
+   * List all databases
+   */
+  listDatabases: () =>
+    apiFetch<DatabaseInfo[]>('/api/v1/database/list'),
+
+  /**
+   * Get database statistics
+   */
+  getStats: () =>
+    apiFetch<DatabaseStats>('/api/v1/database/stats'),
+}
+
+// ============================================================================
 // Export for convenience
 // ============================================================================
 

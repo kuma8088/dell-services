@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Database, Plus, Trash2, RefreshCw, Download, Upload, Search } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Database, Plus, Trash2, RefreshCw, Download, Upload, Search, AlertCircle } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -9,65 +9,25 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-
-// Mock data - Replace with actual API calls
-const mockDatabases = [
-  {
-    name: 'wp_kuma8088',
-    size: '245 MB',
-    tables: 87,
-    charset: 'utf8mb4',
-    collation: 'utf8mb4_unicode_ci',
-  },
-  {
-    name: 'wp_demo1_kuma8088',
-    size: '128 MB',
-    tables: 45,
-    charset: 'utf8mb4',
-    collation: 'utf8mb4_unicode_ci',
-  },
-  {
-    name: 'wp_webmakeprofit',
-    size: '512 MB',
-    tables: 102,
-    charset: 'utf8mb4',
-    collation: 'utf8mb4_unicode_ci',
-  },
-  {
-    name: 'mailserver_usermgmt',
-    size: '12 MB',
-    tables: 8,
-    charset: 'utf8mb4',
-    collation: 'utf8mb4_unicode_ci',
-  },
-]
-
-const mockUsers = [
-  { name: 'root', host: 'localhost', grants: 'ALL PRIVILEGES' },
-  { name: 'usermgmt', host: '%', grants: 'SELECT, INSERT, UPDATE, DELETE' },
-  { name: 'wordpress', host: '%', grants: 'SELECT, INSERT, UPDATE, DELETE' },
-]
+import { databaseAPI } from '@/lib/api'
 
 export default function DatabaseManagement() {
   const [selectedDb, setSelectedDb] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const queryClient = useQueryClient()
 
-  const { data: databases } = useQuery({
+  // Query: List databases
+  const { data: databases, isLoading, error } = useQuery({
     queryKey: ['databases'],
-    queryFn: async () => {
-      // const response = await fetch('/api/v1/database/list')
-      // return response.json()
-      return mockDatabases
-    },
+    queryFn: databaseAPI.listDatabases,
+    refetchInterval: 30000, // Refresh every 30 seconds
   })
 
-  const { data: users } = useQuery({
-    queryKey: ['database-users'],
-    queryFn: async () => {
-      // const response = await fetch('/api/v1/database/users')
-      // return response.json()
-      return mockUsers
-    },
+  // Query: Database stats
+  const { data: stats } = useQuery({
+    queryKey: ['database-stats'],
+    queryFn: databaseAPI.getStats,
+    refetchInterval: 30000,
   })
 
   const filteredDatabases = databases?.filter((db) =>
@@ -75,8 +35,40 @@ export default function DatabaseManagement() {
   )
 
   const handleAction = (action: string, dbName?: string) => {
-    console.log(`${action}:`, dbName || 'all')
-    // TODO: Implement API call
+    if (action === 'refresh') {
+      queryClient.invalidateQueries({ queryKey: ['databases'] })
+      queryClient.invalidateQueries({ queryKey: ['database-stats'] })
+    } else {
+      console.log(`${action}:`, dbName || 'all')
+      // TODO: Implement other API calls
+    }
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
+          <p className="text-muted-foreground">データベース一覧を読み込み中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-600" />
+          <p className="text-red-600">データベース一覧の取得に失敗しました</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {error instanceof Error ? error.message : '不明なエラー'}
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -136,7 +128,9 @@ export default function DatabaseManagement() {
             <Database className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">897 MB</div>
+            <div className="text-2xl font-bold">
+              {stats?.total_size_mb?.toFixed(2) || 0} MB
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
               使用中のストレージ
             </p>
@@ -145,13 +139,15 @@ export default function DatabaseManagement() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">ユーザー数</CardTitle>
+            <CardTitle className="text-sm font-medium">MariaDB バージョン</CardTitle>
             <Database className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users?.length || 0}</div>
+            <div className="text-2xl font-bold">
+              {stats?.mariadb_version?.split('-')[0] || 'Unknown'}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">
-              登録ユーザー
+              データベースエンジン
             </p>
           </CardContent>
         </Card>
@@ -179,18 +175,13 @@ export default function DatabaseManagement() {
                   <Database className="h-8 w-8 text-primary" />
                   <div>
                     <h3 className="font-semibold">{db.name}</h3>
-                    <div className="flex gap-4 text-sm text-muted-foreground mt-1">
-                      <span>{db.tables} テーブル</span>
-                      <span>{db.charset}</span>
-                      <span>{db.collation}</span>
-                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {db.size_mb.toFixed(2)} MB
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-sm font-medium">{db.size}</p>
-                  </div>
 
                   <div className="flex gap-2">
                     <Button
@@ -227,55 +218,6 @@ export default function DatabaseManagement() {
                 </div>
               </div>
             ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Database users */}
-      <Card>
-        <CardHeader>
-          <CardTitle>データベースユーザー</CardTitle>
-          <CardDescription>
-            登録されているユーザー一覧
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-4 font-medium">ユーザー名</th>
-                  <th className="text-left p-4 font-medium">ホスト</th>
-                  <th className="text-left p-4 font-medium">権限</th>
-                  <th className="text-right p-4 font-medium">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users?.map((user) => (
-                  <tr key={`${user.name}@${user.host}`} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="p-4 font-medium">{user.name}</td>
-                    <td className="p-4">{user.host}</td>
-                    <td className="p-4 text-sm text-muted-foreground">
-                      {user.grants}
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex gap-2 justify-end">
-                        <Button size="sm" variant="outline">
-                          編集
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={user.name === 'root'}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </CardContent>
       </Card>
