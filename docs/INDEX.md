@@ -75,6 +75,32 @@
   - 新規サイト作成: [/services/blog/scripts/create-new-wp-site.sh](/services/blog/scripts/create-new-wp-site.sh)
   - ポータル統合設計: [design/portal-integration-design.md](/docs/application/blog/design/portal-integration-design.md)
 
+#### Unified Portal
+
+**[統合ポータル概要](/docs/application/unified-portal/README.md)** - NEW 🎉
+
+**主要ドキュメント:**
+- **アーキテクチャ:** [ARCHITECTURE.md](/docs/application/unified-portal/ARCHITECTURE.md)
+  - FastAPI + React + TypeScript
+  - Xserver風UI/UX
+  - 実装ロードマップ（Phase 1-4）
+- **開発環境:** [LOCAL_DEVELOPMENT.md](/docs/application/unified-portal/LOCAL_DEVELOPMENT.md)
+  - セットアップ手順
+  - テスト・デバッグ方法
+  - トラブルシューティング
+- **Cloudflare統合:** [CLOUDFLARE-API-INTEGRATION.md](/docs/application/unified-portal/CLOUDFLARE-API-INTEGRATION.md) ✅ **実装済み** (2025-11-13)
+  - DNS管理API完全実装
+  - ゾーン一覧・DNSレコードCRUD
+  - API トークン作成ガイド
+  - BIND vs Cloudflare 比較
+- **実装状況:** 📋 Phase 1実装中（I001/I002/I003/I006対応）
+  - ✅ プロジェクト構造作成
+  - ✅ バックエンド基盤（FastAPI + SQLAlchemy）
+  - ✅ フロントエンド基盤（React + Vite + Tailwind + shadcn/ui）
+  - ✅ Cloudflare DNS API統合
+  - ✅ Redis Object Cache統合（WordPress高速化）
+  - 🔄 管理ページ実装中（Dashboard, Docker, Database, PHP, Security, WordPress, Domain, Backup）
+
 ## 🛠️ Implementation
 
 ### Mailserver実装
@@ -100,7 +126,7 @@
 **場所:** [/services/blog/](/services/blog/)
 
 **構成:**
-- `docker-compose.yml` - 4コンテナ構成
+- `docker-compose.yml` - 4コンテナ構成（+ Redis）
 - `config/` - サービス設定ファイル
   - nginx/conf.d/ - 5仮想ホスト設定
   - mariadb/init/ - 16データベース初期化
@@ -111,7 +137,31 @@
   - setup-wp-mail-smtp.sh - WP Mail SMTP一括設定
   - check-wp-mail-smtp.sh - SMTP設定確認
   - generate-nginx-subdirectories.sh - Nginx設定生成
+  - setup-redis-object-cache.sh - Redis Object Cache設定
+  - test-redis-performance.sh - Redis性能テスト
 - `servers/` - サーバー別設定
+
+### Unified Portal実装
+**場所:** [/services/unified-portal/](/services/unified-portal/)
+
+**構成:**
+- `backend/` - FastAPI バックエンド
+  - `app/` - アプリケーションコード
+    - `routers/` - API エンドポイント
+      - domains.py - Cloudflare DNS API統合 ✅
+    - config.py, database.py, main.py
+  - `requirements.txt` - Python依存関係
+  - `.env.example` - 環境変数テンプレート
+- `frontend/` - React フロントエンド
+  - `src/` - ソースコード
+    - `components/` - UIコンポーネント（shadcn/ui）
+    - `pages/` - ページコンポーネント（8ページ）
+    - `lib/` - API クライアント、ユーティリティ
+      - api.ts - ベースAPIクライアント
+      - domains-api.ts - ドメインAPI ✅
+  - `package.json` - npm依存関係
+  - `.env.example` - 環境変数テンプレート
+- `docker-compose.yml` - 開発環境構成
 
 ## 📝 Work Notes
 

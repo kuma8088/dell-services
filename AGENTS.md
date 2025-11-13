@@ -1,17 +1,21 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-Operational code sits in `services/`. `services/mailserver/` bundles Docker Compose stacks, AWS Terraform modules, Flask-based `usermgmt/`, and S3 backup scripts/tests. Blog migration tooling lives in `services/blog/`. Architecture, ops guides, and troubleshooting playbooks reside in `docs/` (`docs/infra` for environments, `docs/application` for workloads). Planning notes and audits stay in `specs/`. Consult these sources before adding new modules.
+Operational code sits in `services/`. `services/mailserver/` bundles Docker Compose stacks, AWS Terraform modules, Flask-based `usermgmt/`, and S3 backup scripts/tests. Blog migration tooling lives in `services/blog/`. **NEW**: `services/unified-portal/` houses the FastAPI + React unified management portal (Phase 1 in progress). Architecture, ops guides, and troubleshooting playbooks reside in `docs/` (`docs/infra` for environments, `docs/application` for workloads). Planning notes and audits stay in `specs/`. Consult these sources before adding new modules.
 
 ## Build, Test, and Development Commands
-- `pip install -r services/mailserver/usermgmt/requirements.txt` — bootstrap the Flask admin environment.  
-- `pytest services/mailserver/usermgmt/tests -v --cov=app` — run unit/integration tests with coverage.  
-- `bash services/mailserver/tests/s3-backup/test_framework.sh` — verify backup retention and Object Lock scripts.  
-- `docker compose -f services/mailserver/docker-compose.yml up -d` — start the on-prem mail stack; swap in `docker-compose.staging.yml` for tunnel validation.  
+- `pip install -r services/mailserver/usermgmt/requirements.txt` — bootstrap the Flask admin environment.
+- `pytest services/mailserver/usermgmt/tests -v --cov=app` — run unit/integration tests with coverage.
+- `bash services/mailserver/tests/s3-backup/test_framework.sh` — verify backup retention and Object Lock scripts.
+- `docker compose -f services/mailserver/docker-compose.yml up -d` — start the on-prem mail stack; swap in `docker-compose.staging.yml` for tunnel validation.
 - `terraform -chdir=services/mailserver/terraform plan` — review AWS diffs before apply.
+- **Unified Portal**: `cd services/unified-portal/backend && python -m app.main` — start FastAPI backend (port 8000).
+- **Unified Portal**: `cd services/unified-portal/frontend && npm run dev` — start React frontend (port 5173).
 
 ## Coding Style & Naming Conventions
 Target Python 3.9+, enforce Black (4 spaces, 88 chars) and keep flake8 clean. Use snake_case for modules/functions, PascalCase for classes, and UPPER_SNAKE_CASE constants. Shell utilities in `services/mailserver/tests/` should begin with `#!/usr/bin/env bash` plus `set -euo pipefail`. Terraform must pin provider versions and keep variables lowercase_with_underscores. Store environment-specific values in `.env` files or AWS profiles shared by Compose/Terraform.
+
+**Unified Portal**: Follow FastAPI async patterns, use Pydantic models for validation, TypeScript strict mode for frontend, functional React components with hooks, ESLint + Prettier for consistency.
 
 ## Testing Guidelines
 Pytest files live beside the code they exercise and follow `test_<topic>.py`. Share fixtures via `services/mailserver/usermgmt/conftest.py`, and gate IMAP/SMTP tests with `@pytest.mark.skipif` so CI stays deterministic. Keep coverage above 80% for user management and routing helpers, and extend the Bash backup suite whenever lifecycle or encryption logic changes. For new services, add pytest or Bash smoke checks against container health endpoints.
