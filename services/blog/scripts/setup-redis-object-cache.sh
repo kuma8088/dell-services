@@ -27,22 +27,22 @@ fi
 
 # All WordPress sites (16 sites)
 declare -a SITES=(
-    "kuma8088"
-    "demo1-kuma8088"
+    "fx-trader-life"
+    "fx-trader-life-4line"
+    "fx-trader-life-lp"
+    "fx-trader-life-mfkc"
+    "kuma8088-cameramanual"
+    "kuma8088-cameramanual-gwpbk492"
+    "kuma8088-ec02test"
+    "kuma8088-elementordemo02"
+    "kuma8088-elementor-demo-03"
+    "kuma8088-elementor-demo-04"
+    "kuma8088-elementordemo1"
+    "kuma8088-test"
+    "toyota-phv"
     "webmakeprofit"
-    "uminomoto-shoyu"
-    "akihide-shiraki-fc"
-    "kodomo-toushi"
-    "moshilog"
-    "tousi-mama"
-    "furusato-media"
-    "kosodate-genki"
-    "warakuwork"
-    "jissenjournalism"
-    "lachic-style"
-    "kuma8088-life"
-    "kuma8088-money"
-    "kuma8088-blog"
+    "webmakeprofit-coconala"
+    "webmakesprofit"
 )
 
 # Redis configuration
@@ -105,11 +105,11 @@ install_plugin() {
 
     # Check if plugin is already installed
     if execute docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
-        wp plugin is-installed redis-cache --path="/var/www/html/$site" 2>/dev/null; then
+        wp plugin is-installed redis-cache --path="/var/www/html/$site" --allow-root --skip-themes 2>/dev/null; then
         print_info "Plugin already installed for $site"
     else
         execute docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
-            wp plugin install redis-cache --activate --path="/var/www/html/$site"
+            wp plugin install redis-cache --activate --path="/var/www/html/$site" --allow-root --skip-themes
         print_success "Plugin installed for $site"
     fi
 }
@@ -121,32 +121,65 @@ configure_redis() {
 
     print_info "Configuring Redis for site: $site (db index: $db_index)"
 
-    # Add Redis configuration to wp-config.php
-    local redis_config="
-// Redis Object Cache Configuration
-define('WP_REDIS_HOST', '${REDIS_HOST}');
-define('WP_REDIS_PORT', ${REDIS_PORT});
-define('WP_REDIS_DATABASE', ${db_index});
-define('WP_REDIS_PREFIX', '${site}_');
-define('WP_REDIS_TIMEOUT', 1);
-define('WP_REDIS_READ_TIMEOUT', 1);
-define('WP_CACHE', true);
-"
-
     if [ "$DRY_RUN" = true ]; then
         echo -e "${YELLOW}[DRY-RUN]${NC} Would add Redis config to /var/www/html/$site/wp-config.php"
-        echo "$redis_config"
+        echo "WP_REDIS_HOST=${REDIS_HOST}"
+        echo "WP_REDIS_PORT=${REDIS_PORT}"
+        echo "WP_REDIS_DATABASE=${db_index}"
+        echo "WP_REDIS_PREFIX=${site}_"
+        echo "WP_REDIS_TIMEOUT=1"
+        echo "WP_REDIS_READ_TIMEOUT=1"
+        echo "WP_CACHE=true"
     else
         # Check if Redis config already exists
         if docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
             grep -q "WP_REDIS_HOST" "/var/www/html/$site/wp-config.php" 2>/dev/null; then
             print_info "Redis config already exists for $site"
         else
-            # Add Redis config before "/* That's all, stop editing! */"
+            # Try wp-cli method first
+            set +e  # Temporarily disable exit on error
+            local config_success=false
+
             docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
-                sed -i "/\/\* That's all, stop editing! \*\//i $redis_config" \
-                "/var/www/html/$site/wp-config.php"
-            print_success "Redis config added to wp-config.php for $site"
+                wp config set WP_REDIS_HOST "${REDIS_HOST}" --type=constant --path="/var/www/html/$site" --allow-root --skip-themes 2>&1 | grep -q "^Success:" && config_success=true
+
+            set -e  # Re-enable exit on error
+
+            if [ "$config_success" = true ]; then
+                # Continue with wp-cli if first command succeeded
+                docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    wp config set WP_REDIS_PORT "${REDIS_PORT}" --raw --type=constant --path="/var/www/html/$site" --allow-root --skip-themes 2>/dev/null || true
+                docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    wp config set WP_REDIS_DATABASE "${db_index}" --raw --type=constant --path="/var/www/html/$site" --allow-root --skip-themes 2>/dev/null || true
+                docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    wp config set WP_REDIS_PREFIX "${site}_" --type=constant --path="/var/www/html/$site" --allow-root --skip-themes 2>/dev/null || true
+                docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    wp config set WP_REDIS_TIMEOUT 1 --raw --type=constant --path="/var/www/html/$site" --allow-root --skip-themes 2>/dev/null || true
+                docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    wp config set WP_REDIS_READ_TIMEOUT 1 --raw --type=constant --path="/var/www/html/$site" --allow-root --skip-themes 2>/dev/null || true
+                docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    wp config set WP_CACHE true --raw --type=constant --path="/var/www/html/$site" --allow-root --skip-themes 2>/dev/null || true
+                print_success "Redis config added to wp-config.php for $site"
+            else
+                # Fallback: Use PHP script for non-standard wp-config.php
+                print_info "Using PHP helper script for non-standard wp-config.php"
+
+                docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    php /usr/local/bin/add-redis-config.php \
+                    "/var/www/html/$site/wp-config.php" \
+                    "${REDIS_HOST}" \
+                    "${REDIS_PORT}" \
+                    "${db_index}" \
+                    "${site}"
+
+                # Verify
+                if docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+                    grep -q "WP_REDIS_HOST" "/var/www/html/$site/wp-config.php" 2>/dev/null; then
+                    print_success "Redis config added using PHP helper for $site"
+                else
+                    print_error "Failed to add Redis config for $site"
+                fi
+            fi
         fi
     fi
 }
@@ -157,10 +190,21 @@ enable_cache() {
 
     print_info "Enabling Redis Object Cache for site: $site"
 
-    execute docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
-        wp redis enable --path="/var/www/html/$site"
+    set +e  # Temporarily disable exit on error
+    local enable_result
+    enable_result=$(docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
+        wp redis enable --path="/var/www/html/$site" --allow-root --skip-themes 2>&1)
+    local enable_exit_code=$?
+    set -e  # Re-enable exit on error
 
-    print_success "Redis Object Cache enabled for $site"
+    if [ $enable_exit_code -eq 0 ] || echo "$enable_result" | grep -q "already enabled"; then
+        print_success "Redis Object Cache enabled for $site"
+        return 0
+    else
+        print_error "Failed to enable Redis Object Cache for $site"
+        echo "$enable_result" | head -5  # Show first 5 lines of error
+        return 1
+    fi
 }
 
 # Function: Check cache status for a site
@@ -170,7 +214,7 @@ check_cache_status() {
     print_info "Checking cache status for site: $site"
 
     docker compose -f "$PROJECT_ROOT/docker-compose.yml" exec -T wordpress \
-        wp redis status --path="/var/www/html/$site" || true
+        wp redis status --path="/var/www/html/$site" --allow-root --skip-themes || true
 }
 
 # Main execution
