@@ -10,11 +10,14 @@ services:
     environment:
       - DATABASE_URL=mysql+pymysql://usermgmt:${USERMGMT_DB_PASSWORD}@172.20.0.60:3306/unified_portal
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-this-secret-key-in-production}
-      - JWT_ALGORITHM=HS256
-      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-      - CORS_ORIGINS=["http://172.20.0.91:5173","http://localhost:5173","http://172.20.0.92"]
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-change-this-password-in-production}
+      - CORS_ORIGINS=["http://172.20.0.91:5173","http://localhost:5173","http://172.20.0.91","https://admin.kuma8088.com"]
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./backend:/app
