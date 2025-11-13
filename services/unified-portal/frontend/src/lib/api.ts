@@ -56,31 +56,40 @@ export interface SystemStats {
 }
 
 export interface ContainerStats {
-  total: number
-  running: number
-  containers: Array<{
-    name: string
-    status: string
-    health: string
-    uptime: string
-  }>
+  name: string
+  status: string
+  cpu_percent: string
+  memory_usage: string
+  memory_limit: string
+  network_io: string
 }
 
-export interface WordPressStats {
-  total_sites: number
-  sites: Array<{
-    site_id: string
-    domain: string
-    status: string
-  }>
+export interface WordPressSiteStatus {
+  site_name: string
+  url: string
+  status: string
+  redis_connected: boolean
+  cache_hit_rate: number
 }
 
 export interface RedisStats {
-  connected: boolean
-  version: string
-  used_memory: string
-  connected_clients: number
+  memory_used_mb: number
+  memory_total_mb: number
+  memory_percent: number
   total_keys: number
+  commands_processed: number
+  cache_hit_rate: number
+  connected_clients: number
+  uptime_days: number
+}
+
+export interface BackupStats {
+  total_backups: number
+  mailserver_daily: number
+  mailserver_weekly: number
+  blog_daily: number
+  blog_weekly: number
+  last_backup_date: string
 }
 
 // ============================================================================
@@ -104,19 +113,25 @@ export const dashboardAPI = {
    * Get container stats
    */
   getContainerStats: () =>
-    apiFetch<ContainerStats>('/api/v1/dashboard/containers'),
+    apiFetch<ContainerStats[]>('/api/v1/dashboard/containers'),
 
   /**
    * Get WordPress stats
    */
   getWordPressStats: () =>
-    apiFetch<WordPressStats>('/api/v1/dashboard/wordpress'),
+    apiFetch<WordPressSiteStatus[]>('/api/v1/dashboard/wordpress'),
 
   /**
    * Get Redis stats
    */
   getRedisStats: () =>
     apiFetch<RedisStats>('/api/v1/dashboard/redis'),
+
+  /**
+   * Get backup statistics
+   */
+  getBackupStats: () =>
+    apiFetch<BackupStats>('/api/v1/dashboard/backup'),
 }
 
 // ============================================================================
