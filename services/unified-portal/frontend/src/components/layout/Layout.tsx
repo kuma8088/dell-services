@@ -5,14 +5,21 @@ import {
   Database,
   Settings,
   LogOut,
+  Globe,
+  FileCode,
+  Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navigation = [
   { name: 'ダッシュボード', href: '/', icon: LayoutDashboard },
-  { name: 'Docker管理', href: '/docker', icon: Container },
+  { name: 'WordPress', href: '/wordpress', icon: Globe },
+  { name: 'ドメイン', href: '/domains', icon: Globe },
+  { name: 'Docker', href: '/docker', icon: Container },
+  { name: 'データベース', href: '/database', icon: Database },
+  { name: 'PHP', href: '/php', icon: FileCode },
+  { name: 'セキュリティ', href: '/security', icon: Shield },
   { name: 'バックアップ', href: '/backup', icon: Database },
-  { name: '設定', href: '/settings', icon: Settings },
 ]
 
 export default function Layout() {
