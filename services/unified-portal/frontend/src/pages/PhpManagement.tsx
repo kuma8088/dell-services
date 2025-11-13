@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileCode, RefreshCw, Download, Settings, AlertCircle } from 'lucide-react'
 import {
   Card,
@@ -9,8 +9,39 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { phpAPI } from '@/lib/api'
 
-// Mock data - Replace with actual API calls
+// Mock data for FPM and logs (Backend API not yet implemented)
+const mockFpmData = {
+  pools: [
+    {
+      name: 'www',
+      processManager: 'dynamic',
+      maxChildren: 50,
+      startServers: 5,
+      minSpareServers: 5,
+      maxSpareServers: 35,
+    },
+  ],
+  status: 'running',
+  uptime: '5 days 3 hours',
+  connections: 12,
+}
+
+const mockLogs = [
+  {
+    timestamp: '2025-11-13 10:30:45',
+    level: 'WARNING',
+    message: 'PHP Warning: Division by zero in /var/www/html/test.php on line 10',
+  },
+  {
+    timestamp: '2025-11-13 10:25:12',
+    level: 'NOTICE',
+    message: 'PHP Notice: Undefined variable: foo in /var/www/html/index.php on line 25',
+  },
+]
+
+// Legacy mock data structure (kept for FPM tab compatibility)
 const mockPhpInfo = {
   version: '8.3.0',
   sapi: 'fpm-fcgi',
@@ -38,60 +69,95 @@ const mockPhpInfo = {
     { key: 'opcache.enable', value: '1', default: '1' },
     { key: 'opcache.memory_consumption', value: '128', default: '128' },
   ],
-  fpm: {
-    pools: [
-      {
-        name: 'www',
-        processManager: 'dynamic',
-        maxChildren: 50,
-        startServers: 5,
-        minSpareServers: 5,
-        maxSpareServers: 35,
-      },
-    ],
-    status: 'running',
-    uptime: '5 days 3 hours',
-    connections: 12,
-  },
+  fpm: mockFpmData,
 }
-
-const mockLogs = [
-  {
-    timestamp: '2025-11-13 10:30:45',
-    level: 'WARNING',
-    message: 'PHP Warning: Division by zero in /var/www/html/test.php on line 10',
-  },
-  {
-    timestamp: '2025-11-13 10:25:12',
-    level: 'NOTICE',
-    message: 'PHP Notice: Undefined variable: foo in /var/www/html/index.php on line 25',
-  },
-]
 
 export default function PhpManagement() {
   const [activeTab, setActiveTab] = useState<'info' | 'extensions' | 'settings' | 'fpm' | 'logs'>('info')
+  const queryClient = useQueryClient()
 
-  const { data: phpInfo } = useQuery({
-    queryKey: ['php-info'],
-    queryFn: async () => {
-      // const response = await fetch('/api/v1/php/info')
-      // return response.json()
-      return mockPhpInfo
-    },
+  // Query: PHP stats (version, modules count, memory limit)
+  const { data: stats, isLoading, error } = useQuery({
+    queryKey: ['php-stats'],
+    queryFn: phpAPI.getStats,
+    refetchInterval: 30000, // Refresh every 30 seconds
   })
 
+  // Query: PHP modules list
+  const { data: modules } = useQuery({
+    queryKey: ['php-modules'],
+    queryFn: phpAPI.listModules,
+    refetchInterval: 60000, // Refresh every 60 seconds
+  })
+
+  // Query: PHP configuration
+  const { data: config } = useQuery({
+    queryKey: ['php-config'],
+    queryFn: phpAPI.getConfig,
+    refetchInterval: 60000,
+  })
+
+  // Mock data for logs (Backend API not yet implemented)
   const { data: logs } = useQuery({
     queryKey: ['php-logs'],
-    queryFn: async () => {
-      // const response = await fetch('/api/v1/php/logs')
-      // return response.json()
-      return mockLogs
-    },
+    queryFn: async () => mockLogs,
   })
 
+  // Legacy mock data for compatibility
+  const phpInfo = {
+    ...mockPhpInfo,
+    version: stats?.version || mockPhpInfo.version,
+    extensions: modules?.map(m => ({
+      name: m.name,
+      version: m.version,
+      status: 'enabled'
+    })) || mockPhpInfo.extensions,
+    settings: config ? [
+      { key: 'memory_limit', value: config.memory_limit, default: '128M' },
+      { key: 'upload_max_filesize', value: config.upload_max_filesize, default: '2M' },
+      { key: 'post_max_size', value: config.post_max_size, default: '8M' },
+      { key: 'max_execution_time', value: config.max_execution_time, default: '30' },
+      { key: 'display_errors', value: config.display_errors, default: 'Off' },
+      { key: 'error_reporting', value: config.error_reporting, default: 'E_ALL' },
+    ] : mockPhpInfo.settings,
+  }
+
   const handleAction = (action: string) => {
-    console.log(`${action}`)
-    // TODO: Implement API call
+    if (action === 'refresh') {
+      queryClient.invalidateQueries({ queryKey: ['php-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['php-modules'] })
+      queryClient.invalidateQueries({ queryKey: ['php-config'] })
+    } else {
+      console.log(`${action}`)
+      // TODO: Implement other API calls
+    }
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
+          <p className="text-muted-foreground">PHP情報を読み込み中...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <AlertCircle className="h-8 w-8 mx-auto mb-2 text-red-600" />
+          <p className="text-red-600">PHP情報の取得に失敗しました</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {error instanceof Error ? error.message : '不明なエラー'}
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
