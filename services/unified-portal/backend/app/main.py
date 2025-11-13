@@ -28,9 +28,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 
-    # Create database tables
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database tables created")
+    # Create database tables (temporarily disabled for Dashboard API testing)
+    # Base.metadata.create_all(bind=engine)
+    # logger.info("Database tables created")
 
     yield
 
@@ -98,14 +98,14 @@ async def root() -> JSONResponse:
 
 
 # Import and register routers
-from app.routers import domains
+from app.routers import domains, dashboard
 
 app.include_router(domains.router)
+app.include_router(dashboard.router)
 
 # Future routers (to be implemented)
-# from app.routers import auth, dashboard, docker, backup, websocket
+# from app.routers import auth, docker, backup, websocket
 # app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
-# app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 # app.include_router(docker.router, prefix="/api/v1/docker", tags=["Docker"])
 # app.include_router(backup.router, prefix="/api/v1/backup", tags=["Backup"])
 # app.include_router(websocket.router, prefix="/ws", tags=["WebSocket"])
