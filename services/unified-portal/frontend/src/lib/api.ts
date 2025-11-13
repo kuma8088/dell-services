@@ -120,6 +120,102 @@ export const dashboardAPI = {
 }
 
 // ============================================================================
+// Docker API Types
+// ============================================================================
+
+export interface ContainerBase {
+  id: string
+  name: string
+  status: string
+  image: string
+}
+
+export interface ContainerDetail extends ContainerBase {
+  created: string
+  ports: string[]
+  stats: {
+    cpu_percent: string
+    memory_usage: string
+    network_io: string
+    block_io: string
+  }
+}
+
+export interface ContainerLogs {
+  logs: string
+  lines: number
+}
+
+export interface DockerStats {
+  containers_running: number
+  containers_stopped: number
+  containers_total: number
+  images_count: number
+}
+
+export interface OperationResult {
+  success: boolean
+  message: string
+  container_id?: string
+}
+
+// ============================================================================
+// Docker API Functions
+// ============================================================================
+
+export const dockerAPI = {
+  /**
+   * List all Docker containers
+   */
+  listContainers: (status?: 'running' | 'stopped') => {
+    const params = status ? `?status=${status}` : ''
+    return apiFetch<ContainerBase[]>(`/api/v1/docker/containers${params}`)
+  },
+
+  /**
+   * Get container details
+   */
+  getContainerDetail: (containerId: string) =>
+    apiFetch<ContainerDetail>(`/api/v1/docker/containers/${containerId}`),
+
+  /**
+   * Start a container
+   */
+  startContainer: (containerId: string) =>
+    apiFetch<OperationResult>(`/api/v1/docker/containers/${containerId}/start`, {
+      method: 'POST',
+    }),
+
+  /**
+   * Stop a container
+   */
+  stopContainer: (containerId: string) =>
+    apiFetch<OperationResult>(`/api/v1/docker/containers/${containerId}/stop`, {
+      method: 'POST',
+    }),
+
+  /**
+   * Restart a container
+   */
+  restartContainer: (containerId: string) =>
+    apiFetch<OperationResult>(`/api/v1/docker/containers/${containerId}/restart`, {
+      method: 'POST',
+    }),
+
+  /**
+   * Get container logs
+   */
+  getContainerLogs: (containerId: string, tail: number = 100) =>
+    apiFetch<ContainerLogs>(`/api/v1/docker/containers/${containerId}/logs?tail=${tail}`),
+
+  /**
+   * Get Docker stats
+   */
+  getDockerStats: () =>
+    apiFetch<DockerStats>('/api/v1/docker/stats'),
+}
+
+// ============================================================================
 // Export for convenience
 // ============================================================================
 
