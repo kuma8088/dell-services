@@ -34,34 +34,30 @@
   - 目標: 日次/週次バックアップの正常動作復旧
   - 詳細: `docs/application/blog/issue/I004_backup-system-troubleshooting.md`
   - 関連: Phase 10 (ローカル) + Phase 11-B (S3) バックアップシステム
+  - 結果待ち：20251114の自動バックアップの結果を確認しOKなら対応完了
 
 - [ ] **[#005] バックアップシステムの更新**
   - 現状: Phase 10 (ローカル) + Phase 11-B (S3) が稼働中
   - 目標: 改善・最適化の検討
   - 詳細: `docs/application/blog/issue/I005_backup-system-improvement.md`
+  - 結果待ち：20251114の自動バックアップの結果を確認しOKなら対応完了
 
 - [ ] **[#006] キャッシュシステム（blogsystem）**
   - 現状: WordPress デフォルトキャッシュのみ
   - 目標: Redis/Memcached等の導入検討
   - 詳細: `docs/application/blog/issue/I006_cache-system-implementation.md`
 
+- [ ] **[#016] 旧バックアップバケット(s3)の削除**
+
 ### インフラ最適化
 
-- [ ] **[#007] Email Routingへの変更（EC2の廃止）**
-  - 現状: EC2で Postfix MX Gateway を稼働
-  - 目標: Cloudflare Email Routing への移行でEC2コスト削減
-  - 詳細: `docs/application/blog/issue/I007_email-routing-migration.md`
+- [ ] **[#015] Terraform(tfstate)のバックアップ**
 
 ### Blog System
 
-- [ ] **[#008] blog.*ドメインの本番移行**
-  - 現状: blog.webmakeprofit.org 等のサブドメインで運用中（Phase A-1 テストフェーズ）
-  - 目標: 本番ドメイン（webmakeprofit.org 等）への移行（Phase A-2）
-  - 詳細: `docs/application/blog/issue/I008_production-domain-migration.md`
-  - 次のアクション#007
-
-
 - [ ] **[#013] SMTP経由でもメールが迷惑メール疑惑をGmailからかけられる対策**
+
+- [ ] **[#014] https://webmakesprofit.comからメールが飛ばない問題**
 
 ---
 
@@ -101,6 +97,18 @@
   - 現状: Elementor Pro・プラグインライセンス状況未確認
   - 目標: ライセンス確認と本番環境での動作検証
   - 詳細: `docs/application/blog/issue/I009_site-validation.md`
+
+
+- [x] **[#008] blog.*ドメインの本番移行**
+  - 現状: blog.webmakeprofit.org 等のサブドメインで運用中（Phase A-1 テストフェーズ）
+  - 目標: 本番ドメイン（webmakeprofit.org 等）への移行（Phase A-2）
+  - 詳細: `docs/application/blog/issue/I008_production-domain-migration.md`
+  - 次のアクション#007
+
+- [x] **[#007] Email Routingへの変更（EC2の廃止）**
+  - 現状: EC2で Postfix MX Gateway を稼働
+  - 目標: Cloudflare Email Routing への移行でEC2コスト削減
+  - 詳細: `docs/application/blog/issue/I007_email-routing-migration.md`
 
 ---
 

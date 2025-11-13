@@ -585,7 +585,7 @@ df -h /mnt/backup-hdd
 
 # バックアップ実行確認
 ls -lah /mnt/backup-hdd/mailserver/daily/
-aws s3 ls s3://mailserver-backup-552927148143/daily/ --profile mailserver-backup-uploader
+aws s3 ls s3://system-backup-workstation/daily/ --profile mailserver-backup-uploader
 ```
 
 ---
