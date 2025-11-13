@@ -85,23 +85,32 @@ def run_command(cmd: List[str], cwd: str = None) -> str:
 
 
 def get_system_stats() -> SystemStats:
-    """Get system resource statistics."""
+    """Get system resource statistics from /proc filesystem."""
     try:
-        # CPU usage
-        cpu_output = run_command(["top", "-bn1"])
-        cpu_line = [line for line in cpu_output.split('\n') if 'Cpu(s)' in line][0]
-        cpu_idle = float(cpu_line.split()[7].replace('%id,', ''))
-        cpu_usage = 100.0 - cpu_idle
+        # Read CPU stats from /proc/stat
+        with open('/proc/stat', 'r') as f:
+            cpu_line = f.readline()
+            cpu_values = [float(x) for x in cpu_line.split()[1:]]
+            cpu_total = sum(cpu_values)
+            cpu_idle = cpu_values[3]  # idle time
+            cpu_usage = 100.0 * (1.0 - cpu_idle / cpu_total) if cpu_total > 0 else 0.0
 
-        # Memory usage
-        mem_output = run_command(["free", "-g"])
-        mem_lines = mem_output.split('\n')
-        mem_data = mem_lines[1].split()
-        memory_total_gb = float(mem_data[1])
-        memory_used_gb = float(mem_data[2])
-        memory_percent = (memory_used_gb / memory_total_gb) * 100
+        # Read memory stats from /proc/meminfo
+        meminfo = {}
+        with open('/proc/meminfo', 'r') as f:
+            for line in f:
+                if ':' in line:
+                    key, value = line.split(':', 1)
+                    meminfo[key.strip()] = int(value.strip().split()[0])
 
-        # Disk usage
+        mem_total_kb = meminfo.get('MemTotal', 0)
+        mem_available_kb = meminfo.get('MemAvailable', meminfo.get('MemFree', 0))
+        memory_total_gb = mem_total_kb / (1024 * 1024)
+        memory_available_gb = mem_available_kb / (1024 * 1024)
+        memory_used_gb = memory_total_gb - memory_available_gb
+        memory_percent = (memory_used_gb / memory_total_gb) * 100 if memory_total_gb > 0 else 0.0
+
+        # Read disk stats (this still works in container)
         disk_output = run_command(["df", "-BG", "/"])
         disk_lines = disk_output.split('\n')
         disk_data = disk_lines[1].split()
@@ -111,8 +120,8 @@ def get_system_stats() -> SystemStats:
 
         return SystemStats(
             cpu_usage=round(cpu_usage, 2),
-            memory_total_gb=memory_total_gb,
-            memory_used_gb=memory_used_gb,
+            memory_total_gb=round(memory_total_gb, 2),
+            memory_used_gb=round(memory_used_gb, 2),
             memory_percent=round(memory_percent, 2),
             disk_total_gb=disk_total_gb,
             disk_used_gb=disk_used_gb,
@@ -125,34 +134,38 @@ def get_system_stats() -> SystemStats:
 def get_container_stats() -> List[ContainerStats]:
     """Get Docker container statistics from blog service."""
     try:
-        blog_dir = "/opt/onprem-infra-system/project-root-infra/services/blog"
-
-        # Get container stats
-        stats_output = run_command(
-            ["docker", "compose", "ps", "--format", "json"],
-            cwd=blog_dir
-        )
+        # Get blog containers using docker ps
+        ps_output = run_command([
+            "docker", "ps", "-a",
+            "--filter", "name=blog-",
+            "--format", "{{.Names}}\t{{.State}}"
+        ])
 
         containers = []
-        for line in stats_output.split('\n'):
+        for line in ps_output.split('\n'):
             if not line.strip():
                 continue
-            try:
-                container_data = json.loads(line)
 
-                # Get detailed stats for running containers
-                if container_data.get('State') == 'running':
-                    container_name = container_data['Name']
-                    stats_cmd_output = run_command(
-                        ["docker", "stats", "--no-stream", "--format",
-                         "{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}", container_name]
-                    )
+            parts = line.split('\t')
+            if len(parts) != 2:
+                continue
+
+            container_name = parts[0]
+            state = parts[1]
+
+            # Get detailed stats for running containers
+            if state == 'running':
+                try:
+                    stats_cmd_output = run_command([
+                        "docker", "stats", "--no-stream", "--format",
+                        "{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}", container_name
+                    ])
 
                     if stats_cmd_output:
-                        parts = stats_cmd_output.split('\t')
-                        cpu_percent = parts[0] if len(parts) > 0 else "0%"
-                        mem_usage = parts[1] if len(parts) > 1 else "0B / 0B"
-                        network_io = parts[2] if len(parts) > 2 else "0B / 0B"
+                        stats_parts = stats_cmd_output.split('\t')
+                        cpu_percent = stats_parts[0] if len(stats_parts) > 0 else "0%"
+                        mem_usage = stats_parts[1] if len(stats_parts) > 1 else "0B / 0B"
+                        network_io = stats_parts[2] if len(stats_parts) > 2 else "0B / 0B"
 
                         mem_parts = mem_usage.split(' / ')
                         memory_usage = mem_parts[0] if len(mem_parts) > 0 else "0B"
@@ -162,22 +175,25 @@ def get_container_stats() -> List[ContainerStats]:
                         memory_usage = "0B"
                         memory_limit = "0B"
                         network_io = "0B / 0B"
-                else:
+                except Exception:
                     cpu_percent = "0%"
                     memory_usage = "0B"
                     memory_limit = "0B"
                     network_io = "0B / 0B"
+            else:
+                cpu_percent = "0%"
+                memory_usage = "0B"
+                memory_limit = "0B"
+                network_io = "0B / 0B"
 
-                containers.append(ContainerStats(
-                    name=container_data.get('Name', 'unknown'),
-                    status=container_data.get('State', 'unknown'),
-                    cpu_percent=cpu_percent,
-                    memory_usage=memory_usage,
-                    memory_limit=memory_limit,
-                    network_io=network_io
-                ))
-            except json.JSONDecodeError:
-                continue
+            containers.append(ContainerStats(
+                name=container_name,
+                status=state,
+                cpu_percent=cpu_percent,
+                memory_usage=memory_usage,
+                memory_limit=memory_limit,
+                network_io=network_io
+            ))
 
         return containers
     except Exception as e:
@@ -187,40 +203,39 @@ def get_container_stats() -> List[ContainerStats]:
 def get_wordpress_sites_status() -> List[WordPressSiteStatus]:
     """Get status for all 16 WordPress sites."""
     try:
-        blog_dir = "/opt/onprem-infra-system/project-root-infra/services/blog"
-
-        # WordPress sites list
+        # WordPress sites list (from wordpress.py)
         sites = [
             ("fx-trader-life", "https://fx-trader-life.com"),
             ("fx-trader-life-4line", "https://4line.fx-trader-life.com"),
             ("fx-trader-life-lp", "https://lp.fx-trader-life.com"),
             ("fx-trader-life-mfkc", "https://mfkc.fx-trader-life.com"),
-            ("kuma8088-cameramanual", "https://cameramanual.kuma8088.com"),
+            ("webmakeprofit", "https://webmakeprofit.org"),
+            ("webmakeprofit-coconala", "https://coconala.webmakeprofit.org"),
+            ("webmakesprofit", "https://webmakesprofit.com"),
+            ("toyota-phv", "https://toyota-phv.jp"),
+            ("kuma8088", "https://kuma8088.com"),
+            ("kuma8088-cameramanual", "https://camera.kuma8088.com"),
             ("kuma8088-cameramanual-gwpbk492", "https://gwpbk492.kuma8088.com"),
-            ("kuma8088-ec02test", "https://blog.kuma8088.com/ec02test"),
-            ("kuma8088-elementordemo02", "https://blog.kuma8088.com/elementordemo02"),
-            ("kuma8088-elementor-demo-03", "https://blog.kuma8088.com/elementor-demo-03"),
-            ("kuma8088-elementor-demo-04", "https://blog.kuma8088.com/elementor-demo-04"),
             ("kuma8088-elementordemo1", "https://demo1.kuma8088.com"),
-            ("kuma8088-test", "https://blog.kuma8088.com/test"),
-            ("toyota-phv", "https://toyota-phv.com"),
-            ("webmakeprofit", "https://webmakeprofit.com"),
-            ("webmakeprofit-coconala", "https://coconala.webmakeprofit.com"),
-            ("webmakesprofit", "https://webmakesprofit.com")
+            ("kuma8088-elementordemo02", "https://demo2.kuma8088.com"),
+            ("kuma8088-elementor-demo-03", "https://demo3.kuma8088.com"),
+            ("kuma8088-elementor-demo-04", "https://demo4.kuma8088.com"),
+            ("kuma8088-ec02test", "https://ec-test.kuma8088.com"),
+            ("kuma8088-test", "https://test.kuma8088.com"),
         ]
 
         sites_status = []
 
         for site_name, url in sites:
             try:
-                # Check Redis status for the site
+                # Check Redis status for the site using docker exec
                 redis_output = run_command([
-                    "docker", "compose", "exec", "-T", "wordpress",
+                    "docker", "exec", "-i", "blog-wordpress",
                     "wp", "redis", "status",
                     f"--path=/var/www/html/{site_name}",
                     "--allow-root",
                     "--skip-themes"
-                ], cwd=blog_dir)
+                ])
 
                 redis_connected = "Status: Connected" in redis_output
 
@@ -254,13 +269,11 @@ def get_wordpress_sites_status() -> List[WordPressSiteStatus]:
 def get_redis_stats() -> RedisStats:
     """Get Redis cache statistics."""
     try:
-        blog_dir = "/opt/onprem-infra-system/project-root-infra/services/blog"
-
-        # Get Redis INFO
+        # Get Redis INFO using docker exec
         info_output = run_command([
-            "docker", "compose", "exec", "-T", "redis",
+            "docker", "exec", "-i", "blog-redis",
             "redis-cli", "INFO"
-        ], cwd=blog_dir)
+        ])
 
         # Parse INFO output
         info_dict = {}

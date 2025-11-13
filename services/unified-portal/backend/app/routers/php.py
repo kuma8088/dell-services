@@ -54,11 +54,9 @@ def run_php_command(command: List[str]) -> str:
     Returns:
         Command output as string
     """
-    blog_dir = "/opt/onprem-infra-system/project-root-infra/services/blog"
-
+    # Execute via docker exec directly with container name
     full_command = [
-        "docker", "compose", "-f", f"{blog_dir}/docker-compose.yml",
-        "exec", "-T", "wordpress"
+        "docker", "exec", "-i", "blog-wordpress"
     ] + command
 
     try:

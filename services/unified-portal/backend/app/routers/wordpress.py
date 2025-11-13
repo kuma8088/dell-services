@@ -12,24 +12,35 @@ import json
 router = APIRouter(prefix="/api/v1/wordpress", tags=["WordPress"])
 
 
-# WordPress site definitions (16 sites)
+# WordPress site definitions (17 sites - includes kuma8088 root)
+# URLs updated to Phase A-2 production domains (2025-11-12)
 WORDPRESS_SITES = [
-    {"name": "fx-trader-life", "url": "https://fx-trader.life"},
-    {"name": "fx-trader-life-4line", "url": "https://4line.fx-trader.life"},
-    {"name": "fx-trader-life-lp", "url": "https://lp.fx-trader.life"},
-    {"name": "fx-trader-life-mfkc", "url": "https://mfkc.fx-trader.life"},
-    {"name": "kuma8088-cameramanual", "url": "https://cameramanual.kuma8088.com"},
-    {"name": "kuma8088-cameramanual-gwpbk492", "url": "https://gwpbk492.kuma8088.com"},
-    {"name": "kuma8088-ec02test", "url": "https://ec02test.kuma8088.com"},
-    {"name": "kuma8088-elementor-demo-03", "url": "https://demo03.kuma8088.com"},
-    {"name": "kuma8088-elementor-demo-04", "url": "https://demo04.kuma8088.com"},
-    {"name": "kuma8088-elementordemo02", "url": "https://demo02.kuma8088.com"},
-    {"name": "kuma8088-elementordemo1", "url": "https://demo01.kuma8088.com"},
-    {"name": "kuma8088-test", "url": "https://test.kuma8088.com"},
-    {"name": "toyota-phv", "url": "https://toyota-phv.com"},
-    {"name": "webmakeprofit", "url": "https://webmakeprofit.com"},
-    {"name": "webmakeprofit-coconala", "url": "https://coconala.webmakeprofit.com"},
+    # fx-trader-life.com domain (4 sites)
+    {"name": "fx-trader-life", "url": "https://fx-trader-life.com"},
+    {"name": "fx-trader-life-4line", "url": "https://4line.fx-trader-life.com"},
+    {"name": "fx-trader-life-lp", "url": "https://lp.fx-trader-life.com"},
+    {"name": "fx-trader-life-mfkc", "url": "https://mfkc.fx-trader-life.com"},
+
+    # webmakeprofit.org domain (2 sites)
+    {"name": "webmakeprofit", "url": "https://webmakeprofit.org"},
+    {"name": "webmakeprofit-coconala", "url": "https://coconala.webmakeprofit.org"},
+
+    # webmakesprofit.com domain (1 site)
     {"name": "webmakesprofit", "url": "https://webmakesprofit.com"},
+
+    # toyota-phv.jp domain (1 site)
+    {"name": "toyota-phv", "url": "https://toyota-phv.jp"},
+
+    # kuma8088.com domain (9 sites)
+    {"name": "kuma8088", "url": "https://kuma8088.com"},
+    {"name": "kuma8088-cameramanual", "url": "https://camera.kuma8088.com"},
+    {"name": "kuma8088-cameramanual-gwpbk492", "url": "https://gwpbk492.kuma8088.com"},  # Legacy site
+    {"name": "kuma8088-elementordemo1", "url": "https://demo1.kuma8088.com"},
+    {"name": "kuma8088-elementordemo02", "url": "https://demo2.kuma8088.com"},
+    {"name": "kuma8088-elementor-demo-03", "url": "https://demo3.kuma8088.com"},
+    {"name": "kuma8088-elementor-demo-04", "url": "https://demo4.kuma8088.com"},
+    {"name": "kuma8088-ec02test", "url": "https://ec-test.kuma8088.com"},
+    {"name": "kuma8088-test", "url": "https://test.kuma8088.com"},
 ]
 
 

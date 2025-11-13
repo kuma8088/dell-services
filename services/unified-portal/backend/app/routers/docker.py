@@ -68,46 +68,57 @@ def run_docker_command(cmd: List[str]) -> str:
         raise RuntimeError(f"Docker command error: {str(e)}")
 
 
-def get_blog_containers(status_filter: Optional[str] = None) -> List[ContainerBase]:
-    """Get Blog System containers."""
+def get_all_containers(status_filter: Optional[str] = None) -> List[ContainerBase]:
+    """Get all Docker containers using docker ps command."""
     try:
-        blog_dir = "/opt/onprem-infra-system/project-root-infra/services/blog"
+        # Get all containers with docker ps
+        cmd = [
+            "docker", "ps", "-a",
+            "--format", "{{.ID}}|||{{.Names}}|||{{.Status}}|||{{.Image}}"
+        ]
 
-        # Get container list in JSON format
-        cmd_output = run_docker_command([
-            "docker", "compose", "-f", f"{blog_dir}/docker-compose.yml",
-            "ps", "--format", "json"
-        ])
+        output = run_docker_command(cmd)
+        containers_list = []
 
-        containers = []
-        for line in cmd_output.split('\n'):
+        for line in output.split('\n'):
             if not line.strip():
                 continue
 
             try:
-                container_data = json.loads(line)
-
-                # Apply status filter
-                state = container_data.get('State', '')
-                if status_filter and state != status_filter:
+                parts = line.split('|||')
+                if len(parts) != 4:
                     continue
 
-                # Get container ID
-                container_id = run_docker_command([
-                    "docker", "ps", "-a", "--filter",
-                    f"name={container_data['Name']}", "--format", "{{.ID}}"
-                ])
+                container_id, name, status_text, image = parts
 
-                containers.append(ContainerBase(
-                    id=container_id if container_id else container_data['Name'],
-                    name=container_data.get('Name', 'unknown'),
-                    status=state,
-                    image=container_data.get('Image', 'unknown')
+                # Determine status from status text
+                status = "unknown"
+                if "Up" in status_text:
+                    status = "running"
+                elif "Exited" in status_text:
+                    status = "exited"
+                elif "Created" in status_text:
+                    status = "created"
+                elif "Paused" in status_text:
+                    status = "paused"
+
+                # Apply status filter
+                if status_filter:
+                    if status_filter == "running" and status != "running":
+                        continue
+                    elif status_filter == "stopped" and status not in ["exited", "stopped"]:
+                        continue
+
+                containers_list.append(ContainerBase(
+                    id=container_id[:12],
+                    name=name,
+                    status=status,
+                    image=image
                 ))
-            except json.JSONDecodeError:
+            except Exception:
                 continue
 
-        return containers
+        return containers_list
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list containers: {str(e)}")
 
@@ -116,12 +127,12 @@ def get_blog_containers(status_filter: Optional[str] = None) -> List[ContainerBa
 @router.get("/containers", response_model=List[ContainerBase])
 async def list_containers(status: Optional[str] = Query(None, description="Filter by status (running/stopped)")):
     """
-    List all Docker containers in Blog System.
+    List all Docker containers.
 
     Args:
-        status: Optional filter by container status
+        status: Optional filter by container status (running/stopped)
     """
-    return get_blog_containers(status_filter=status)
+    return get_all_containers(status_filter=status)
 
 
 @router.get("/containers/{container_id}", response_model=ContainerDetail)
@@ -280,24 +291,20 @@ async def get_container_logs(
 @router.get("/stats", response_model=DockerStats)
 async def get_docker_stats():
     """
-    Get Docker system statistics.
+    Get Docker system statistics using docker commands.
     """
     try:
-        # Get all containers
-        all_containers_output = run_docker_command([
-            "docker", "ps", "-a", "--format", "{{.State}}"
-        ])
+        # Get container stats
+        all_output = run_docker_command(["docker", "ps", "-a", "--format", "{{.Status}}"])
+        all_statuses = [s.strip() for s in all_output.split('\n') if s.strip()]
 
-        all_states = all_containers_output.split('\n')
-        containers_running = sum(1 for state in all_states if state == 'running')
-        containers_stopped = sum(1 for state in all_states if state in ['exited', 'stopped'])
-        containers_total = len([s for s in all_states if s])
+        containers_running = sum(1 for s in all_statuses if "Up" in s)
+        containers_stopped = sum(1 for s in all_statuses if "Exited" in s)
+        containers_total = len(all_statuses)
 
         # Get images count
-        images_output = run_docker_command([
-            "docker", "images", "--format", "{{.ID}}"
-        ])
-        images_count = len([img for img in images_output.split('\n') if img])
+        images_output = run_docker_command(["docker", "images", "-q"])
+        images_count = len([img for img in images_output.split('\n') if img.strip()])
 
         return DockerStats(
             containers_running=containers_running,

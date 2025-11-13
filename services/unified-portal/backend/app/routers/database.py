@@ -50,19 +50,8 @@ def run_mysql_command(query: str) -> str:
     Returns:
         Query result as string
     """
-    # Get container name
-    blog_dir = "/opt/onprem-infra-system/project-root-infra/services/blog"
-
-    # Load password from .env file
-    env_file = os.path.join(blog_dir, ".env")
-    mysql_password = "wordpress_root_password"  # default
-
-    if os.path.exists(env_file):
-        with open(env_file, 'r') as f:
-            for line in f:
-                if line.startswith('MYSQL_ROOT_PASSWORD='):
-                    mysql_password = line.split('=', 1)[1].strip()
-                    break
+    # Get password from environment variable
+    mysql_password = os.environ.get('BLOG_MYSQL_ROOT_PASSWORD', 'wordpress_root_password')
 
     # Execute via docker exec with container name
     docker_cmd = [
