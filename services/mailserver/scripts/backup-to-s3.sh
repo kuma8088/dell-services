@@ -57,8 +57,17 @@ done
 # Local backup directory
 LOCAL_BACKUP_DIR="${DAILY_BACKUP_DIR}/${BACKUP_DATE}"
 
+# S3 configuration overrides
+: "${S3_PREFIX:=}"
+: "${S3_TIER:=daily}"
+: "${S3_INCLUDE_PATTERNS:=mail/* mysql/* config/* dkim/* ssl/* checksums.sha256 backup.log}"
+
 # S3 destination
-S3_DESTINATION="${S3_BUCKET}/daily/${BACKUP_DATE}"
+if [[ -n "${S3_PREFIX}" ]]; then
+    S3_DESTINATION="${S3_BUCKET}/${S3_PREFIX}/${S3_TIER}/${BACKUP_DATE}"
+else
+    S3_DESTINATION="${S3_BUCKET}/${S3_TIER}/${BACKUP_DATE}"
+fi
 
 # Checksum file
 CHECKSUM_FILE="${LOCAL_BACKUP_DIR}/checksums.sha256"
@@ -76,8 +85,9 @@ log "=========================================="
 if command -v run_preflight_checks >/dev/null 2>&1; then
     if ! run_preflight_checks \
         --disk-space 10 \
-        --env-vars "S3_BUCKET,AWS_REGION,DAILY_BACKUP_DIR" \
-        --files "${LOCAL_BACKUP_DIR}/checksums.sha256"; then
+        --env-vars "S3_BUCKET,AWS_DEFAULT_REGION,DAILY_BACKUP_DIR" \
+        --files "${LOCAL_BACKUP_DIR}/checksums.sha256" \
+        2>&1 | tee -a "$LOG_FILE"; then
         log "ERROR: Pre-flight checks failed"
         exit 1
     fi
@@ -160,19 +170,18 @@ log "Creating checksum file..."
 log "Uploading to S3: s3://${S3_DESTINATION}/"
 
 # Upload with aws s3 sync
+INCLUDE_ARGS=()
+for pattern in ${S3_INCLUDE_PATTERNS}; do
+    INCLUDE_ARGS+=(--include "${pattern}")
+done
+
 if aws s3 sync \
     "$LOCAL_BACKUP_DIR/" \
     "s3://${S3_DESTINATION}/" \
     --storage-class STANDARD \
     --no-progress \
     --exclude "*" \
-    --include "mail/*" \
-    --include "mysql/*" \
-    --include "config/*" \
-    --include "dkim/*" \
-    --include "ssl/*" \
-    --include "checksums.sha256" \
-    --include "backup.log" \
+    "${INCLUDE_ARGS[@]}" \
     2>&1 | tee -a "$LOG_FILE"; then
 
     log "S3 upload completed successfully"
@@ -222,8 +231,18 @@ log "=========================================="
 
 # Calculate estimated storage cost (rough estimate)
 # S3 Standard: $0.025/GB/month in ap-northeast-1
-UPLOAD_SIZE_GB=$(du -sb "$LOCAL_BACKUP_DIR" | awk '{print $1/1024/1024/1024}')
-ESTIMATED_COST=$(echo "$UPLOAD_SIZE_GB * 0.025" | bc -l 2>/dev/null || echo "N/A")
+# Use printf to avoid scientific notation (bc cannot parse 1.2e-05 style strings)
+UPLOAD_SIZE_GB=$(du -sb "$LOCAL_BACKUP_DIR" | awk '{printf "%.10f", $1/1024/1024/1024}')
+if command -v bc >/dev/null 2>&1; then
+    ESTIMATED_COST_RAW=$(echo "$UPLOAD_SIZE_GB * 0.025" | bc -l 2>/dev/null | tr -d '\n')
+    if [[ -n "$ESTIMATED_COST_RAW" ]]; then
+        ESTIMATED_COST=$(printf "%.6f" "$ESTIMATED_COST_RAW")
+    else
+        ESTIMATED_COST="N/A"
+    fi
+else
+    ESTIMATED_COST="N/A"
+fi
 
 log "Estimated monthly storage cost: \$${ESTIMATED_COST}"
 

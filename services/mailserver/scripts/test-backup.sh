@@ -173,10 +173,10 @@ test_suite_3_configuration() {
         "/opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup-config.sh" \
         "ADMIN_EMAIL"
 
-    # Test 3.3: BACKUP_ROOT points to /mnt/backup-hdd/mailserver
-    assert_contains "3.3: BACKUP_ROOT is /mnt/backup-hdd/mailserver" \
+    # Test 3.3: BACKUP_ROOT points to /mnt/backup-hdd/rental/mail
+    assert_contains "3.3: BACKUP_ROOT is /mnt/backup-hdd/rental/mail" \
         "/opt/onprem-infra-system/project-root-infra/services/mailserver/scripts/backup-config.sh" \
-        "/mnt/backup-hdd/mailserver"
+        "/mnt/backup-hdd/rental/mail"
 
     # Test 3.4: Retention periods are set
     assert_contains "3.4: DAILY_RETENTION_DAYS is set" \
@@ -236,24 +236,24 @@ test_suite_5_backup_directories() {
     log_info "========================================="
 
     # Test 5.1: Backup root exists
-    if [ ! -d "/mnt/backup-hdd/mailserver" ]; then
-        log_warn "5.1: Creating /mnt/backup-hdd/mailserver"
-        mkdir -p /mnt/backup-hdd/mailserver/{daily,weekly}
+    if [ ! -d "/mnt/backup-hdd/rental/mail" ]; then
+        log_warn "5.1: Creating /mnt/backup-hdd/rental/mail"
+        mkdir -p /mnt/backup-hdd/rental/mail/{daily,weekly}
     fi
-    assert_dir_exists "5.1: Backup root exists" "/mnt/backup-hdd/mailserver"
+    assert_dir_exists "5.1: Backup root exists" "/mnt/backup-hdd/rental/mail"
 
     # Test 5.2: Daily backup directory exists
     assert_dir_exists "5.2: Daily backup directory exists" \
-        "/mnt/backup-hdd/mailserver/daily"
+        "/mnt/backup-hdd/rental/mail/daily"
 
     # Test 5.3: Weekly backup directory exists
     assert_dir_exists "5.3: Weekly backup directory exists" \
-        "/mnt/backup-hdd/mailserver/weekly"
+        "/mnt/backup-hdd/rental/mail/weekly"
 
     # Test 5.4: Backup root has correct permissions
     assert_true "5.4: Backup root is owned by system-admin" \
-        "[ \"\$(stat -c %U /mnt/backup-hdd/mailserver)\" = \"system-admin\" ]" \
-        "/mnt/backup-hdd/mailserver not owned by system-admin"
+        "[ \"\$(stat -c %U /mnt/backup-hdd/rental/mail)\" = \"system-admin\" ]" \
+        "/mnt/backup-hdd/rental/mail not owned by system-admin"
 
     echo ""
 }
@@ -388,7 +388,7 @@ main() {
         log_info "Next steps:"
         echo "  1. Create ~/.my.cnf with MySQL credentials"
         echo "  2. Run: ./backup-mailserver.sh --daily"
-        echo "  3. Verify backup: ls -lh /mnt/backup-hdd/mailserver/daily/"
+        echo "  3. Verify backup: ls -lh /mnt/backup-hdd/rental/mail/daily/"
         echo ""
         exit 0
     fi

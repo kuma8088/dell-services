@@ -15,51 +15,81 @@
 set -euo pipefail
 
 # ==================== Paths ====================
-export PROJECT_ROOT="/opt/onprem-infra-system/project-root-infra"
-export MAILSERVER_ROOT="${PROJECT_ROOT}/services/mailserver"
-export BACKUP_ROOT="/mnt/backup-hdd/mailserver"
-export SCRIPTS_DIR="${MAILSERVER_ROOT}/scripts"
+: "${PROJECT_ROOT:=/opt/onprem-infra-system/project-root-infra}"
+export PROJECT_ROOT
+: "${MAILSERVER_ROOT:=${PROJECT_ROOT}/services/mailserver}"
+export MAILSERVER_ROOT
+: "${BACKUP_ROOT:=/mnt/backup-hdd/rental/mail}"
+export BACKUP_ROOT
+: "${BACKUP_MOUNTPOINT:=/mnt/backup-hdd}"
+export BACKUP_MOUNTPOINT
+: "${SCRIPTS_DIR:=${MAILSERVER_ROOT}/scripts}"
+export SCRIPTS_DIR
 
 # ==================== Backup Sources ====================
-export MAIL_DATA_DIR="${MAILSERVER_ROOT}/data/mail"
-export MYSQL_CONTAINER="${MYSQL_CONTAINER:-mailserver-mariadb}"
-export MYSQL_USER="${MYSQL_USER:-root}"
-export MYSQL_DATABASES="${MYSQL_DATABASES:-mailserver_usermgmt roundcube_mailserver}"
-export CONFIG_DIR="${MAILSERVER_ROOT}/config"
-export SSL_DIR="${MAILSERVER_ROOT}/data/certbot"
-export DKIM_DIR="${CONFIG_DIR}/opendkim"
-export DOCKER_COMPOSE_FILE="${MAILSERVER_ROOT}/docker-compose.yml"
-export ENV_FILE="${MAILSERVER_ROOT}/.env"
+: "${MAIL_DATA_DIR:=${MAILSERVER_ROOT}/data/mail}"
+export MAIL_DATA_DIR
+: "${MYSQL_CONTAINER:=mailserver-mariadb}"
+export MYSQL_CONTAINER
+: "${MYSQL_USER:=root}"
+export MYSQL_USER
+: "${MYSQL_DATABASES:=mailserver_usermgmt roundcube_mailserver}"
+export MYSQL_DATABASES
+: "${CONFIG_DIR:=${MAILSERVER_ROOT}/config}"
+export CONFIG_DIR
+: "${SSL_DIR:=${MAILSERVER_ROOT}/data/certbot}"
+export SSL_DIR
+: "${DKIM_DIR:=${CONFIG_DIR}/opendkim}"
+export DKIM_DIR
+: "${DOCKER_COMPOSE_FILE:=${MAILSERVER_ROOT}/docker-compose.yml}"
+export DOCKER_COMPOSE_FILE
+: "${ENV_FILE:=${MAILSERVER_ROOT}/.env}"
+export ENV_FILE
 
 # ==================== Backup Destinations ====================
-export DAILY_BACKUP_DIR="${BACKUP_ROOT}/daily"
-export WEEKLY_BACKUP_DIR="${BACKUP_ROOT}/weekly"
-export LATEST_LINK="${BACKUP_ROOT}/latest"
+: "${DAILY_BACKUP_DIR:=${BACKUP_ROOT}/daily}"
+export DAILY_BACKUP_DIR
+: "${WEEKLY_BACKUP_DIR:=${BACKUP_ROOT}/weekly}"
+export WEEKLY_BACKUP_DIR
+: "${LATEST_LINK:=${BACKUP_ROOT}/latest}"
+export LATEST_LINK
 
 # ==================== Retention ====================
 export DAILY_RETENTION_DAYS="${DAILY_RETENTION_DAYS:-30}"
 export WEEKLY_RETENTION_WEEKS="${WEEKLY_RETENTION_WEEKS:-12}"
 
 # ==================== Notifications ====================
-export ADMIN_EMAIL="${ADMIN_EMAIL:-naoya.iimura@gmail.com}"
-export NOTIFICATION_ON_SUCCESS="${NOTIFICATION_ON_SUCCESS:-false}"
-export NOTIFICATION_ON_FAILURE="${NOTIFICATION_ON_FAILURE:-true}"
-export DISK_WARNING_THRESHOLD="${DISK_WARNING_THRESHOLD:-80}" # Percentage
+: "${ADMIN_EMAIL:=naoya.iimura@gmail.com}"
+export ADMIN_EMAIL
+: "${NOTIFICATION_ON_SUCCESS:=false}"
+export NOTIFICATION_ON_SUCCESS
+: "${NOTIFICATION_ON_FAILURE:=true}"
+export NOTIFICATION_ON_FAILURE
+: "${DISK_WARNING_THRESHOLD:=80}"
+export DISK_WARNING_THRESHOLD
 
 # ==================== Logging ====================
-export LOG_FILE="${LOG_FILE:-/home/system-admin/.mailserver-backup.log}"
-export ERROR_LOG="${ERROR_LOG:-/home/system-admin/.mailserver-backup-error.log}"
-export LOG_LEVEL="${LOG_LEVEL:-INFO}"
+: "${LOG_FILE:=/home/system-admin/.mailserver-backup.log}"
+export LOG_FILE
+: "${ERROR_LOG:=/home/system-admin/.mailserver-backup-error.log}"
+export ERROR_LOG
+: "${LOG_LEVEL:=INFO}"
+export LOG_LEVEL
 
 # ==================== Runtime ====================
-export LOCK_FILE="${LOCK_FILE:-/tmp/mailserver-backup.lock}"
-export TEMP_DIR="${TEMP_DIR:-/tmp/mailserver-backup-$$}"
-export MAX_RETRIES="${MAX_RETRIES:-3}"
-export RETRY_DELAY="${RETRY_DELAY:-10}" # seconds
+: "${LOCK_FILE:=/tmp/mailserver-backup.lock}"
+export LOCK_FILE
+: "${TEMP_DIR:=/tmp/mailserver-backup-$$}"
+export TEMP_DIR
+: "${MAX_RETRIES:=3}"
+export MAX_RETRIES
+: "${RETRY_DELAY:=10}"
+export RETRY_DELAY
 
 # ==================== MySQL Authentication ====================
 # Use .my.cnf for secure password storage
-export MYSQL_CONFIG_FILE="${MYSQL_CONFIG_FILE:-${HOME}/.my.cnf}"
+: "${MYSQL_CONFIG_FILE:=${HOME}/.my.cnf}"
+export MYSQL_CONFIG_FILE
 
 # ==================== Phase 11-B: S3 Backup Configuration ====================
 
