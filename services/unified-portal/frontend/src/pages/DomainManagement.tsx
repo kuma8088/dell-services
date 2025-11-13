@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Globe, Plus, RefreshCw, Trash2, Mail, Lock, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Globe, Plus, RefreshCw, Trash2, Mail, Lock, CheckCircle, AlertCircle } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -13,10 +13,8 @@ import {
   listZones,
   getDNSRecords,
   createDNSRecord,
-  updateDNSRecord,
   deleteDNSRecord,
   type Zone,
-  type DNSRecord,
   type DNSRecordCreate,
 } from '@/lib/domains-api'
 
@@ -30,7 +28,6 @@ interface DomainMetadata extends Zone {
 }
 
 export default function DomainManagement() {
-  const [showAddModal, setShowAddModal] = useState(false)
   const [showDNSModal, setShowDNSModal] = useState(false)
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'dns' | 'mail' | 'wordpress'>('overview')
@@ -466,7 +463,7 @@ export default function DomainManagement() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground mb-4">
-                  このドメインには {domains?.find((d) => d.domain === selectedDomain)?.wordpressSites} 個のWordPressサイトがあります
+                  このドメインには {domains?.find((d) => d.name === selectedDomain)?.wordpressSites} 個のWordPressサイトがあります
                 </p>
                 <Button onClick={() => handleAction('view-wp-sites', selectedDomain)}>
                   WordPressサイト一覧を表示

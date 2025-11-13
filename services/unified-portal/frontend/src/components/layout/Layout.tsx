@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Container,
   Database,
-  Settings,
   LogOut,
   Globe,
   FileCode,

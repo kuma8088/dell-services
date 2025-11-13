@@ -83,21 +83,21 @@ export default function SecurityManagement() {
   const queryClient = useQueryClient()
 
   // Query: Security stats (SSL, HTTPS, Cloudflare protection)
-  const { data: stats, isLoading, error } = useQuery({
+  const { data: _stats, isLoading, error } = useQuery({
     queryKey: ['security-stats'],
     queryFn: securityAPI.getStats,
     refetchInterval: 60000, // Refresh every 60 seconds
   })
 
-  // Query: SSL certificates
-  const { data: certificates } = useQuery({
+  // Query: SSL certificates (for future implementation)
+  const { data: _certificates } = useQuery({
     queryKey: ['ssl-certificates'],
     queryFn: securityAPI.listSSLCertificates,
     refetchInterval: 300000, // Refresh every 5 minutes
   })
 
-  // Query: Security headers
-  const { data: headers } = useQuery({
+  // Query: Security headers (for future implementation)
+  const { data: _headers } = useQuery({
     queryKey: ['security-headers'],
     queryFn: securityAPI.getSecurityHeaders,
     refetchInterval: 300000,

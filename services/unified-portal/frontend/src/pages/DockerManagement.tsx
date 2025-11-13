@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { dockerAPI, type ContainerBase } from '@/lib/api'
+import { dockerAPI } from '@/lib/api'
 
 export default function DockerManagement() {
   const [selectedContainer, setSelectedContainer] = useState<string | null>(null)
@@ -24,9 +24,9 @@ export default function DockerManagement() {
   const queryClient = useQueryClient()
 
   // Query: List containers
-  const { data: containers, isLoading, error } = useQuery({
+  const { data: containers = [], isLoading, error } = useQuery({
     queryKey: ['docker-containers'],
-    queryFn: dockerAPI.listContainers,
+    queryFn: () => dockerAPI.listContainers(),
     refetchInterval: 10000, // Refresh every 10 seconds
   })
 

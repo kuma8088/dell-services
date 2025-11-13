@@ -47,6 +47,13 @@ export default function WordPressManagement() {
     site.url.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  // Mock backups data for restore modal (Backend not implemented)
+  const backups = [
+    { id: '1', timestamp: '2025-11-13 03:00', type: 'daily', size: '95.2 GB' },
+    { id: '2', timestamp: '2025-11-12 03:00', type: 'daily', size: '94.8 GB' },
+    { id: '3', timestamp: '2025-11-10 02:00', type: 'weekly', size: '95.0 GB' },
+  ]
+
   const handleAction = (action: string, site?: string) => {
     if (action === 'refresh') {
       queryClient.invalidateQueries({ queryKey: ['wordpress-sites'] })
