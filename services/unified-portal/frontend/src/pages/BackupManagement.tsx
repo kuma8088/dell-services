@@ -133,7 +133,7 @@ export default function BackupManagement() {
             <Clock className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.last_backup_time || 'unknown'}</div>
+            <div className="text-2xl font-bold">{stats?.last_backup_time || '不明'}</div>
             <p className="text-xs text-muted-foreground mt-1">
               最後の実行日時
             </p>

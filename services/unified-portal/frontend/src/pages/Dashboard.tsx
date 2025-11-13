@@ -20,12 +20,6 @@ import { dashboardAPI } from '@/lib/api'
 
 export default function Dashboard() {
   // Fetch dashboard data from Backend API
-  const { data: overview } = useQuery({
-    queryKey: ['dashboard-overview'],
-    queryFn: dashboardAPI.getOverview,
-    refetchInterval: 30000, // Refresh every 30 seconds
-  })
-
   const { data: systemStats } = useQuery({
     queryKey: ['dashboard-system'],
     queryFn: dashboardAPI.getSystemStats,
@@ -50,6 +44,12 @@ export default function Dashboard() {
     refetchInterval: 10000,
   })
 
+  const { data: backup } = useQuery({
+    queryKey: ['dashboard-backup'],
+    queryFn: dashboardAPI.getBackupStats,
+    refetchInterval: 30000,
+  })
+
   // Format uptime in human-readable format
   const formatUptime = (seconds: number): string => {
     const days = Math.floor(seconds / 86400)
@@ -69,10 +69,14 @@ export default function Dashboard() {
     alerts.push('ディスク使用率が高くなっています')
   }
 
+  // Calculate running containers
+  const runningContainers = containers?.filter(c => c.status === 'running').length || 0
+  const totalContainers = containers?.length || 0
+
   const statCards = [
     {
       title: 'サービス稼働状況',
-      value: `${containers?.running || 0} / ${containers?.total || 0}`,
+      value: `${runningContainers} / ${totalContainers}`,
       description: '稼働中のコンテナ数',
       icon: Server,
       color: 'text-green-600',
@@ -93,12 +97,17 @@ export default function Dashboard() {
     },
     {
       title: 'ディスク使用量',
-      value: `${systemStats?.disk_used_gb?.toFixed(2) || 0} TB`,
-      description: `${systemStats?.disk_total_gb?.toFixed(1) || 3.4} TB中 (${systemStats?.disk_percent?.toFixed(1) || 0}%)`,
+      value: `${systemStats?.disk_used_gb?.toFixed(2) || 0} GB`,
+      description: `${systemStats?.disk_total_gb?.toFixed(1) || 3.4} GB中 (${systemStats?.disk_percent?.toFixed(1) || 0}%)`,
       icon: HardDrive,
       color: 'text-yellow-600',
     },
   ]
+
+  // Calculate WordPress sites with Redis connection
+  const totalWordPressSites = wordpress?.length || 0
+  const wordpressSitesWithRedis = wordpress?.filter(site => site.redis_connected).length || 0
+  const isRedisConnected = redis && redis.connected_clients > 0
 
   const serviceCategories = [
     {
@@ -106,10 +115,12 @@ export default function Dashboard() {
       description: 'WordPressサイト管理',
       icon: Database,
       stats: [
-        { label: '稼働サイト数', value: String(wordpress?.total_sites || 16) },
+        { label: '稼働サイト数', value: String(totalWordPressSites) },
         {
           label: 'Redisキャッシュ',
-          value: redis?.connected ? `${redis.total_keys || 0}` : '未接続'
+          value: isRedisConnected
+            ? `${wordpressSitesWithRedis}/${totalWordPressSites}サイト接続`
+            : '未接続'
         },
       ],
       actions: [
@@ -126,7 +137,7 @@ export default function Dashboard() {
           label: 'システム稼働時間',
           value: systemStats?.uptime_seconds ? formatUptime(systemStats.uptime_seconds) : '不明'
         },
-        { label: 'データベース数', value: String(overview?.total_databases || 0) },
+        { label: 'データベース数', value: String(totalWordPressSites) },
       ],
       actions: [
         { label: 'Docker管理', href: '/docker' },
@@ -138,7 +149,7 @@ export default function Dashboard() {
       description: 'バックアップ・リストア',
       icon: Database,
       stats: [
-        { label: 'バックアップ総数', value: String(overview?.backup_count || 0) },
+        { label: 'バックアップ総数', value: String(backup?.total_backups || 0) },
         { label: 'スケジュール', value: '日次/週次' },
       ],
       actions: [

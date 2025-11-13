@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # Docker
     docker_host: str = "unix:///var/run/docker.sock"
 
+    # Cloudflare API
+    cloudflare_api_token: str = ""
+
     # Logging
     log_level: str = "INFO"
 

@@ -68,15 +68,19 @@ def get_directory_size(path: str) -> float:
 def parse_backup_date(backup_path: str) -> str:
     """Extract date from backup path."""
     # Extract date from path like /mnt/backup-hdd/mailserver/daily/YYYY-MM-DD
+    # or weekly format like /mnt/backup-hdd/mailserver/weekly/YYYY-week-WW
     parts = backup_path.split("/")
     for part in reversed(parts):
+        # Check for YYYY-MM-DD format
         if len(part) == 10 and part.count("-") == 2:
             try:
-                # Validate date format
                 datetime.strptime(part, "%Y-%m-%d")
                 return part
             except ValueError:
-                continue
+                pass
+        # Check for YYYY-week-WW format
+        if "week" in part.lower() and part.count("-") == 2:
+            return part
     return "unknown"
 
 
@@ -139,20 +143,23 @@ async def list_blog_backups():
         Blog backup list
     """
     try:
-        backup_base = "/mnt/backup-hdd/blog"
+        backup_base = "/mnt/backup-hdd/rental/blog"
         backups = []
 
-        if os.path.exists(backup_base):
-            for backup_dir in sorted(glob.glob(f"{backup_base}/*"), reverse=True):
-                if os.path.isdir(backup_dir):
-                    date = parse_backup_date(backup_dir)
-                    size = get_directory_size(backup_dir)
-                    backups.append(BackupInfo(
-                        date=date,
-                        size_mb=size,
-                        path=backup_dir,
-                        type="blog"
-                    ))
+        # Check daily and weekly backups
+        for backup_type in ["daily", "weekly"]:
+            backup_path = os.path.join(backup_base, backup_type)
+            if os.path.exists(backup_path):
+                for backup_dir in sorted(glob.glob(f"{backup_path}/*"), reverse=True):
+                    if os.path.isdir(backup_dir):
+                        date = parse_backup_date(backup_dir)
+                        size = get_directory_size(backup_dir)
+                        backups.append(BackupInfo(
+                            date=date,
+                            size_mb=size,
+                            path=backup_dir,
+                            type=f"blog-{backup_type}"
+                        ))
 
         return BlogBackups(backups=backups)
     except Exception as e:
@@ -186,12 +193,20 @@ async def get_backup_stats():
         total_size_gb = round(total_size_mb / 1024, 2)
 
         # Get last backup time
-        last_backup_time = "unknown"
+        last_backup_time = "不明"
         all_backups = mailserver_backups.daily + mailserver_backups.weekly + blog_backups.backups
         if all_backups:
-            # Sort by date and get most recent
-            sorted_backups = sorted(all_backups, key=lambda x: x.date, reverse=True)
-            last_backup_time = sorted_backups[0].date
+            # Filter out unknown dates and prefer YYYY-MM-DD format
+            date_backups = [b for b in all_backups if b.date != "unknown" and not "week" in b.date.lower()]
+            if date_backups:
+                sorted_backups = sorted(date_backups, key=lambda x: x.date, reverse=True)
+                last_backup_time = sorted_backups[0].date
+            else:
+                # Fallback to week format if no date format available
+                valid_backups = [b for b in all_backups if b.date != "unknown"]
+                if valid_backups:
+                    sorted_backups = sorted(valid_backups, key=lambda x: x.date, reverse=True)
+                    last_backup_time = sorted_backups[0].date
 
         return BackupStats(
             total_backups=mailserver_count + blog_count,
