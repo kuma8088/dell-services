@@ -464,6 +464,71 @@ export const securityAPI = {
 }
 
 // ============================================================================
+// Backup API Types
+// ============================================================================
+
+export interface BackupInfo {
+  date: string
+  size_mb: number
+  path: string
+  type: string  // daily, weekly, blog
+}
+
+export interface MailserverBackups {
+  daily: BackupInfo[]
+  weekly: BackupInfo[]
+}
+
+export interface BlogBackups {
+  backups: BackupInfo[]
+}
+
+export interface BackupStats {
+  total_backups: number
+  total_size_gb: number
+  last_backup_time: string
+  mailserver_backups: number
+  blog_backups: number
+}
+
+export interface BackupSchedule {
+  mailserver_daily: string
+  mailserver_weekly: string
+  s3_replication: string
+  malware_scan: string
+}
+
+// ============================================================================
+// Backup API Functions
+// ============================================================================
+
+export const backupAPI = {
+  /**
+   * List all mailserver backups (daily and weekly)
+   */
+  listMailserverBackups: () =>
+    apiFetch<MailserverBackups>('/api/v1/backup/mailserver/list'),
+
+  /**
+   * List all blog backups
+   */
+  listBlogBackups: () =>
+    apiFetch<BlogBackups>('/api/v1/backup/blog/list'),
+
+  /**
+   * Get backup system statistics
+   */
+  getStats: () =>
+    apiFetch<BackupStats>('/api/v1/backup/stats'),
+
+  /**
+   * Get backup schedule information
+   */
+  getSchedule: () =>
+    apiFetch<BackupSchedule>('/api/v1/backup/schedule'),
+}
+
+// ============================================================================
 // Export for convenience
 // ============================================================================
 
