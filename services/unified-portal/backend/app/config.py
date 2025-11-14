@@ -22,8 +22,11 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = False
 
-    # Database
+    # Database - Unified Portal (main database)
     database_url: str = "mysql+pymysql://usermgmt:password@172.20.0.60:3306/unified_portal"
+
+    # Database - Mailserver User Management
+    mailserver_database_url: str = "mysql+pymysql://usermgmt:password@172.20.0.60:3306/mailserver_usermgmt"
 
     # JWT
     jwt_secret_key: str = "change-this-secret-key-in-production"

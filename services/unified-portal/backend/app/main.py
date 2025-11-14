@@ -98,7 +98,7 @@ async def root() -> JSONResponse:
 
 
 # Import and register routers
-from app.routers import auth, domains, dashboard, docker, wordpress, database, php, security, backup
+from app.routers import auth, domains, dashboard, docker, wordpress, database, php, security, backup, mailserver
 
 app.include_router(auth.router)
 app.include_router(domains.router)
@@ -109,6 +109,7 @@ app.include_router(database.router)
 app.include_router(php.router)
 app.include_router(security.router)
 app.include_router(backup.router)
+app.include_router(mailserver.router)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,11 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# Create SQLAlchemy engine
+# ============================================================================
+# Unified Portal Database (Main)
+# ============================================================================
+
+# Create SQLAlchemy engine for main database
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
@@ -19,20 +23,51 @@ engine = create_engine(
     echo=settings.debug,
 )
 
-# Create session factory
+# Create session factory for main database
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create declarative base
+# Create declarative base (shared by all models)
 Base = declarative_base()
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Get database session.
+    """Get main database session.
 
     Yields:
-        Session: SQLAlchemy database session.
+        Session: SQLAlchemy database session for unified_portal database.
     """
     db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# ============================================================================
+# Mailserver User Management Database
+# ============================================================================
+
+# Create SQLAlchemy engine for mailserver database
+mailserver_engine = create_engine(
+    settings.mailserver_database_url,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    echo=settings.debug,
+)
+
+# Create session factory for mailserver database
+MailServerSessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=mailserver_engine
+)
+
+
+def get_mailserver_db() -> Generator[Session, None, None]:
+    """Get mailserver database session.
+
+    Yields:
+        Session: SQLAlchemy database session for mailserver_usermgmt database.
+    """
+    db = MailServerSessionLocal()
     try:
         yield db
     finally:
