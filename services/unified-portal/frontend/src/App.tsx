@@ -7,6 +7,7 @@ import PhpManagement from './pages/PhpManagement'
 import SecurityManagement from './pages/SecurityManagement'
 import WordPressManagement from './pages/WordPressManagement'
 import DomainManagement from './pages/DomainManagement'
+import MailserverManagement from './pages/MailserverManagement'
 import Login from './pages/Login'
 import Layout from './components/layout/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -34,6 +35,7 @@ function App() {
             <Route path="/security" element={<SecurityManagement />} />
             <Route path="/wordpress" element={<WordPressManagement />} />
             <Route path="/domains" element={<DomainManagement />} />
+            <Route path="/mailserver" element={<MailserverManagement />} />
           </Route>
         </Routes>
       </AuthProvider>

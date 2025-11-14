@@ -7,6 +7,7 @@ import {
   Globe,
   FileCode,
   Shield,
+  Mail,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -14,6 +15,7 @@ const navigation = [
   { name: 'ダッシュボード', href: '/', icon: LayoutDashboard },
   { name: 'WordPress', href: '/wordpress', icon: Globe },
   { name: 'ドメイン', href: '/domains', icon: Globe },
+  { name: 'Mailserver', href: '/mailserver', icon: Mail },
   { name: 'Docker', href: '/docker', icon: Container },
   { name: 'データベース', href: '/database', icon: Database },
   { name: 'PHP', href: '/php', icon: FileCode },
