@@ -16,5 +16,11 @@ export default defineConfig({
     watch: {
       usePolling: true, // For Docker/WSL2 compatibility
     },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
   },
 })
