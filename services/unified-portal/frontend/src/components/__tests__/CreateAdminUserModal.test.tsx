@@ -6,7 +6,6 @@ import CreateAdminUserModal from '../CreateAdminUserModal'
 
 describe('CreateAdminUserModal', () => {
   const mockOnClose = vi.fn()
-  const mockOnSuccess = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -17,7 +16,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -33,7 +31,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={false}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -47,7 +44,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -67,7 +63,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -87,7 +82,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -107,7 +101,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -127,7 +120,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -147,7 +139,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -170,7 +161,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -187,7 +177,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 
@@ -207,7 +196,6 @@ describe('CreateAdminUserModal', () => {
       <CreateAdminUserModal
         isOpen={true}
         onClose={mockOnClose}
-        onSuccess={mockOnSuccess}
       />
     )
 

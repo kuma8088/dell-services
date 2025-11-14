@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { X, Database, Table, FileText, Loader2, AlertCircle } from 'lucide-react'
-import { databaseAPI, type DatabaseDetail } from '@/lib/api'
+import { databaseAPI } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 

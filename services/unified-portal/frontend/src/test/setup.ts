@@ -24,6 +24,10 @@ Object.defineProperty(window, 'matchMedia', {
 
 // Mock IntersectionObserver
 globalThis.IntersectionObserver = class IntersectionObserver {
+  readonly root: Element | null = null
+  readonly rootMargin: string = '0px'
+  readonly thresholds: ReadonlyArray<number> = []
+
   constructor() {}
   disconnect() {}
   observe() {}
@@ -31,7 +35,7 @@ globalThis.IntersectionObserver = class IntersectionObserver {
     return []
   }
   unobserve() {}
-}
+} as any
 
 // Extend expect with jest-dom matchers
 expect.extend({})
