@@ -30,6 +30,7 @@ class AdminUserCreate(AdminUserBase):
     """Admin user creation schema."""
 
     password: str = Field(..., min_length=8, max_length=100)
+    full_name: Optional[str] = Field(None, max_length=100)
     is_superuser: bool = False
 
     @field_validator("password")
@@ -52,6 +53,7 @@ class AdminUserUpdate(BaseModel):
 
     email: Optional[EmailStr] = None
     password: Optional[str] = Field(None, min_length=8, max_length=100)
+    full_name: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
 
@@ -76,6 +78,7 @@ class AdminUserResponse(AdminUserBase):
     """Admin user response schema."""
 
     id: int
+    full_name: Optional[str] = None
     is_active: bool
     is_superuser: bool
     created_at: datetime

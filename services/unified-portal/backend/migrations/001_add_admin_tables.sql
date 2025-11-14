@@ -6,13 +6,16 @@
 -- Admin users table (Portal administrators)
 CREATE TABLE IF NOT EXISTS admin_users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL COMMENT 'bcrypt hash',
-    role VARCHAR(50) NOT NULL DEFAULT 'admin' COMMENT 'super_admin, admin',
-    enabled BOOLEAN DEFAULT TRUE,
-    last_login DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    username VARCHAR(50) UNIQUE NOT NULL COMMENT 'Admin username',
+    email VARCHAR(255) UNIQUE NOT NULL COMMENT 'Admin email address',
+    password_hash VARCHAR(255) NOT NULL COMMENT 'Bcrypt password hash',
+    full_name VARCHAR(100) COMMENT 'Admin full name',
+    is_active BOOLEAN DEFAULT TRUE NOT NULL COMMENT 'Account active status',
+    is_superuser BOOLEAN DEFAULT FALSE NOT NULL COMMENT 'Superuser privileges',
+    last_login DATETIME COMMENT 'Last login timestamp',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_username (username),
     INDEX idx_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
