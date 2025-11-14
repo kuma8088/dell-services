@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tantml:react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Loader2, AlertCircle, CheckCircle2, Shield } from 'lucide-react'
 import { adminUserAPI, type AdminUserCreate } from '@/lib/api'
 import { Button } from '@/components/ui/button'
