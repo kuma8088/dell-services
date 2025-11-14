@@ -1,0 +1,368 @@
+# API仕様書（簡易版）
+
+**プロジェクト**: Unified Portal - Mailserver統合
+
+**ベースURL**: `https://admin.kuma8088.com/api/v1`
+
+**認証**: JWT Bearer Token（全エンドポイント共通）
+
+**作成日**: 2025-11-14
+
+---
+
+## 📋 エンドポイント一覧
+
+### 1. メールユーザー管理
+
+#### 1.1 ユーザー一覧取得
+```
+GET /mailserver/users
+Query Parameters:
+  - domain_id (optional): ドメインID
+  - skip (optional): オフセット（default: 0）
+  - limit (optional): 取得件数（default: 20）
+  - search (optional): 検索文字列（email部分一致）
+  - enabled (optional): 有効/無効フィルタ
+
+Response: 200 OK
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "user@kuma8088.com",
+      "domain_id": 1,
+      "domain_name": "kuma8088.com",
+      "quota": 1024,
+      "enabled": true,
+      "is_admin": false,
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "total": 100
+}
+```
+
+#### 1.2 ユーザー作成
+```
+POST /mailserver/users
+Body:
+{
+  "email": "newuser@kuma8088.com",
+  "password": "SecurePass123!",
+  "domain_id": 1,
+  "quota": 1024,
+  "enabled": true
+}
+
+Response: 201 Created
+{
+  "id": 2,
+  "email": "newuser@kuma8088.com",
+  ...
+}
+```
+
+#### 1.3 ユーザー更新
+```
+PUT /mailserver/users/{email}
+Body:
+{
+  "quota": 2048,
+  "enabled": false
+}
+
+Response: 200 OK
+```
+
+#### 1.4 ユーザー削除
+```
+DELETE /mailserver/users/{email}
+Response: 204 No Content
+```
+
+#### 1.5 パスワード変更
+```
+POST /mailserver/users/{email}/password
+Body:
+{
+  "new_password": "NewSecurePass456!"
+}
+
+Response: 200 OK
+```
+
+#### 1.6 有効/無効切替
+```
+POST /mailserver/users/{email}/toggle
+Response: 200 OK
+```
+
+---
+
+### 2. メールドメイン管理
+
+#### 2.1 ドメイン一覧取得
+```
+GET /mailserver/domains
+Response: 200 OK
+{
+  "domains": [
+    {
+      "id": 1,
+      "name": "kuma8088.com",
+      "description": "Main domain",
+      "default_quota": 1024,
+      "enabled": true,
+      "user_count": 5
+    }
+  ]
+}
+```
+
+#### 2.2 ドメイン作成
+```
+POST /mailserver/domains
+Body:
+{
+  "name": "newdomain.com",
+  "description": "New domain",
+  "default_quota": 1024,
+  "enabled": true
+}
+
+Response: 201 Created
+```
+
+#### 2.3 ドメイン更新/削除
+```
+PUT /mailserver/domains/{id}
+DELETE /mailserver/domains/{id}
+```
+
+---
+
+### 3. 監査ログ
+
+#### 3.1 ログ一覧取得
+```
+GET /mailserver/audit-logs
+Query Parameters:
+  - start_date (optional): 開始日時
+  - end_date (optional): 終了日時
+  - action (optional): 操作種別フィルタ
+  - user_email (optional): 対象ユーザーフィルタ
+
+Response: 200 OK
+{
+  "logs": [
+    {
+      "id": 1,
+      "action": "create",
+      "user_email": "user@kuma8088.com",
+      "admin_ip": "192.168.1.100",
+      "details": "{\"quota\": 1024}",
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### 4. 管理者管理
+
+#### 4.1 管理者一覧取得
+```
+GET /admin-users
+Response: 200 OK
+{
+  "admin_users": [
+    {
+      "id": 1,
+      "email": "admin@kuma8088.com",
+      "role": "super_admin",
+      "enabled": true,
+      "last_login": "2025-01-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+#### 4.2 管理者作成
+```
+POST /admin-users
+Body:
+{
+  "email": "newadmin@kuma8088.com",
+  "password": "AdminPass123!",
+  "role": "admin",
+  "enabled": true
+}
+
+Response: 201 Created
+```
+
+---
+
+### 5. パスワード再設定
+
+#### 5.1 リセットリクエスト
+```
+POST /password-reset/request
+Body:
+{
+  "email": "user@kuma8088.com"
+}
+
+Response: 200 OK
+{
+  "message": "リセットリンクをメールで送信しました"
+}
+
+Side Effect:
+- リセットトークン生成（有効期限1時間）
+- メール送信（noreply@kuma8088.com）
+```
+
+#### 5.2 トークン検証
+```
+POST /password-reset/verify
+Body:
+{
+  "token": "uuid-token-here"
+}
+
+Response: 200 OK
+{
+  "valid": true,
+  "email": "user@kuma8088.com"
+}
+
+Response: 400 Bad Request
+{
+  "detail": "トークンが無効または期限切れです"
+}
+```
+
+#### 5.3 パスワードリセット実行
+```
+POST /password-reset/reset
+Body:
+{
+  "token": "uuid-token-here",
+  "new_password": "NewSecurePass789!"
+}
+
+Response: 200 OK
+{
+  "message": "パスワードをリセットしました"
+}
+
+Side Effect:
+- パスワード更新
+- トークンを使用済みに設定
+- 成功通知メール送信
+```
+
+---
+
+### 6. DNS管理（既存強化）
+
+#### 6.1 DNSレコード編集
+```
+PUT /domains/zones/{zone_id}/records/{record_id}
+Body:
+{
+  "type": "A",
+  "name": "subdomain",
+  "content": "192.0.2.1",
+  "ttl": 3600,
+  "proxied": true
+}
+
+Response: 200 OK
+```
+
+#### 6.2 DNS検証
+```
+POST /domains/dns/verify
+Body:
+{
+  "name": "example.com",
+  "type": "A"
+}
+
+Response: 200 OK
+{
+  "result": "192.0.2.1\n192.0.2.2",
+  "query_time_ms": 15
+}
+```
+
+---
+
+## 🔒 認証
+
+### JWTトークン取得
+```
+POST /auth/login
+Body:
+{
+  "username": "admin@kuma8088.com",
+  "password": "password"
+}
+
+Response: 200 OK
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+### 認証ヘッダー
+```
+Authorization: Bearer <access_token>
+```
+
+---
+
+## ⚠️ エラーレスポンス
+
+### 400 Bad Request
+```json
+{
+  "detail": "バリデーションエラー: emailが不正です"
+}
+```
+
+### 401 Unauthorized
+```json
+{
+  "detail": "認証が必要です"
+}
+```
+
+### 403 Forbidden
+```json
+{
+  "detail": "権限がありません"
+}
+```
+
+### 404 Not Found
+```json
+{
+  "detail": "ユーザーが見つかりません"
+}
+```
+
+### 500 Internal Server Error
+```json
+{
+  "detail": "サーバーエラーが発生しました"
+}
+```
+
+---
+
+**参照**: [02_ARCHITECTURE.md](02_ARCHITECTURE.md) - アーキテクチャ詳細
