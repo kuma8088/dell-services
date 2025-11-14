@@ -16,7 +16,7 @@ import json
 from app.auth import get_current_user
 from app.database import get_db
 from app.schemas.wordpress import (
-    WordPressSiteCacheControl,
+    WordPressCacheOperation,
     WordPressSiteCreate,
     WordPressSiteResponse,
     WordPressSiteStats as WordPressSiteStatsSchema,
@@ -586,7 +586,7 @@ def get_managed_site_stats(
 @router.post("/managed-sites/{site_id}/cache/clear", status_code=200)
 def clear_managed_site_cache(
     site_id: int,
-    cache_control: WordPressSiteCacheControl,
+    cache_control: WordPressCacheOperation,
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
 ):
