@@ -76,6 +76,13 @@ export default function PhpManagement() {
   const [activeTab, setActiveTab] = useState<'info' | 'extensions' | 'settings' | 'fpm' | 'logs'>('info')
   const queryClient = useQueryClient()
 
+  // Query: PHP version details
+  const { data: versionInfo } = useQuery({
+    queryKey: ['php-version'],
+    queryFn: phpAPI.getVersion,
+    refetchInterval: 60000,
+  })
+
   // Query: PHP stats (version, modules count, memory limit)
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['php-stats'],
@@ -124,6 +131,7 @@ export default function PhpManagement() {
 
   const handleAction = (action: string) => {
     if (action === 'refresh') {
+      queryClient.invalidateQueries({ queryKey: ['php-version'] })
       queryClient.invalidateQueries({ queryKey: ['php-stats'] })
       queryClient.invalidateQueries({ queryKey: ['php-modules'] })
       queryClient.invalidateQueries({ queryKey: ['php-config'] })
@@ -168,36 +176,86 @@ export default function PhpManagement() {
           PHP管理
         </h2>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-          PHP設定と拡張モジュールの管理を行います
+          PHP設定と拡張モジュールの管理を行います（自動更新: 30秒）
+          {versionInfo && (
+            <span className="ml-2">
+              • PHP {versionInfo.major}.{versionInfo.minor}.{versionInfo.patch}
+            </span>
+          )}
         </p>
       </div>
 
-      {/* PHP version and actions */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <FileCode className="h-12 w-12 text-primary" />
-          <div>
-            <h3 className="text-2xl font-bold">PHP {phpInfo?.version}</h3>
-            <p className="text-sm text-muted-foreground">
-              {phpInfo?.sapi} | {phpInfo?.fpm.status}
+      {/* Statistics */}
+      <div className="grid gap-6 sm:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">PHPバージョン</CardTitle>
+            <FileCode className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.version || phpInfo?.version}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {phpInfo?.sapi}
             </p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handleAction('refresh')}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            更新
-          </Button>
-          <Button variant="outline" onClick={() => handleAction('phpinfo')}>
-            <Settings className="h-4 w-4 mr-2" />
-            phpinfo() 表示
-          </Button>
-          <Button variant="outline" onClick={() => handleAction('download-config')}>
-            <Download className="h-4 w-4 mr-2" />
-            設定ダウンロード
-          </Button>
-        </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">メモリ制限</CardTitle>
+            <Settings className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.memory_limit || config?.memory_limit || '256M'}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              最大メモリ使用量
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">モジュール数</CardTitle>
+            <Download className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats?.modules_count || modules?.length || 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              有効な拡張機能
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">FPMステータス</CardTitle>
+            <AlertCircle className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+              {phpInfo?.fpm.status}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              プロセスマネージャー
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => handleAction('refresh')}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          更新
+        </Button>
+        <Button variant="outline" onClick={() => handleAction('phpinfo')}>
+          <Settings className="h-4 w-4 mr-2" />
+          phpinfo() 表示
+        </Button>
+        <Button variant="outline" onClick={() => handleAction('download-config')}>
+          <Download className="h-4 w-4 mr-2" />
+          設定ダウンロード
+        </Button>
       </div>
 
       {/* Tabs */}
