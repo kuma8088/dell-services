@@ -320,12 +320,251 @@ export const wordpressAPI = {
 }
 
 // ============================================================================
+// Managed WordPress Sites API Types (New Site Lifecycle Management)
+// ============================================================================
+
+export interface ManagedWordPressSite {
+  id: number
+  site_name: string
+  domain: string
+  database_name: string
+  php_version: string
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ManagedSiteCreate {
+  site_name: string
+  domain: string
+  database_name?: string
+  php_version: string
+}
+
+export interface ManagedSiteUpdate {
+  domain?: string
+  php_version?: string
+  enabled?: boolean
+}
+
+export interface ManagedSiteStats {
+  posts: number
+  pages: number
+  plugins: number
+  themes: number
+  users: number
+  db_size_mb: number
+}
+
+export interface CacheControlRequest {
+  cache_type: 'all' | 'redis' | 'transients' | 'rewrite'
+}
+
+// ============================================================================
+// Managed WordPress Sites API Functions
+// ============================================================================
+
+export const managedSitesAPI = {
+  /**
+   * List all managed WordPress sites
+   */
+  listSites: (enabledOnly?: boolean) =>
+    apiFetch<ManagedWordPressSite[]>(
+      `/api/v1/wordpress/managed-sites${enabledOnly ? '?enabled_only=true' : ''}`
+    ),
+
+  /**
+   * Get managed site by ID
+   */
+  getSite: (siteId: number) =>
+    apiFetch<ManagedWordPressSite>(`/api/v1/wordpress/managed-sites/${siteId}`),
+
+  /**
+   * Create new managed WordPress site
+   */
+  createSite: (siteData: ManagedSiteCreate) =>
+    apiFetch<ManagedWordPressSite>('/api/v1/wordpress/managed-sites', {
+      method: 'POST',
+      body: JSON.stringify(siteData),
+    }),
+
+  /**
+   * Update managed WordPress site
+   */
+  updateSite: (siteId: number, siteData: ManagedSiteUpdate) =>
+    apiFetch<ManagedWordPressSite>(`/api/v1/wordpress/managed-sites/${siteId}`, {
+      method: 'PUT',
+      body: JSON.stringify(siteData),
+    }),
+
+  /**
+   * Delete managed WordPress site
+   */
+  deleteSite: (siteId: number, deleteDatabase?: boolean) =>
+    apiFetch<void>(
+      `/api/v1/wordpress/managed-sites/${siteId}${deleteDatabase ? '?delete_database=true' : ''}`,
+      {
+        method: 'DELETE',
+      }
+    ),
+
+  /**
+   * Get managed site statistics
+   */
+  getSiteStats: (siteId: number) =>
+    apiFetch<ManagedSiteStats>(`/api/v1/wordpress/managed-sites/${siteId}/stats`),
+
+  /**
+   * Clear managed site cache
+   */
+  clearCache: (siteId: number, cacheType: CacheControlRequest) =>
+    apiFetch<{ success: boolean; message: string }>(
+      `/api/v1/wordpress/managed-sites/${siteId}/cache/clear`,
+      {
+        method: 'POST',
+        body: JSON.stringify(cacheType),
+      }
+    ),
+}
+
+// ============================================================================
+// Admin User Management API Types
+// ============================================================================
+
+export interface AdminUser {
+  id: number
+  username: string
+  email: string
+  is_active: boolean
+  is_superuser: boolean
+  created_at: string
+  updated_at: string
+  last_login: string | null
+}
+
+export interface AdminUserCreate {
+  username: string
+  email: string
+  password: string
+  is_superuser?: boolean
+}
+
+export interface AdminUserUpdate {
+  email?: string
+  password?: string
+  is_active?: boolean
+  is_superuser?: boolean
+}
+
+export interface PasswordResetRequest {
+  email: string
+}
+
+export interface PasswordResetVerify {
+  token: string
+  new_password?: string
+}
+
+// ============================================================================
+// Admin User Management API Functions
+// ============================================================================
+
+export const adminUserAPI = {
+  /**
+   * List all admin users
+   */
+  listUsers: (activeOnly?: boolean) =>
+    apiFetch<AdminUser[]>(
+      `/api/v1/auth/users${activeOnly ? '?active_only=true' : ''}`
+    ),
+
+  /**
+   * Get admin user by ID
+   */
+  getUser: (userId: number) =>
+    apiFetch<AdminUser>(`/api/v1/auth/users/${userId}`),
+
+  /**
+   * Create new admin user
+   */
+  createUser: (userData: AdminUserCreate) =>
+    apiFetch<AdminUser>('/api/v1/auth/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    }),
+
+  /**
+   * Update admin user
+   */
+  updateUser: (userId: number, userData: AdminUserUpdate) =>
+    apiFetch<AdminUser>(`/api/v1/auth/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    }),
+
+  /**
+   * Delete admin user
+   */
+  deleteUser: (userId: number) =>
+    apiFetch<void>(`/api/v1/auth/users/${userId}`, {
+      method: 'DELETE',
+    }),
+
+  /**
+   * Request password reset
+   */
+  requestPasswordReset: (email: string) =>
+    apiFetch<{ success: boolean; message: string }>(
+      '/api/v1/auth/password-reset/request',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }
+    ),
+
+  /**
+   * Verify password reset token
+   */
+  verifyResetToken: (token: string) =>
+    apiFetch<{ valid: boolean; message: string }>(
+      '/api/v1/auth/password-reset/verify',
+      {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      }
+    ),
+
+  /**
+   * Confirm password reset with new password
+   */
+  confirmPasswordReset: (token: string, newPassword: string) =>
+    apiFetch<{ success: boolean; message: string }>(
+      '/api/v1/auth/password-reset/confirm',
+      {
+        method: 'POST',
+        body: JSON.stringify({ token, new_password: newPassword }),
+      }
+    ),
+}
+
+// ============================================================================
 // Database API Types
 // ============================================================================
 
 export interface DatabaseInfo {
   name: string
   size_mb: number
+}
+
+export interface DatabaseDetail extends DatabaseInfo {
+  tables_count: number
+  rows_count: number
+}
+
+export interface DatabaseStatus {
+  connected: boolean
+  version: string
+  uptime: number
 }
 
 export interface DatabaseStats {
@@ -340,10 +579,22 @@ export interface DatabaseStats {
 
 export const databaseAPI = {
   /**
+   * Get database connection status
+   */
+  getStatus: () =>
+    apiFetch<DatabaseStatus>('/api/v1/database/status'),
+
+  /**
    * List all databases
    */
   listDatabases: () =>
     apiFetch<DatabaseInfo[]>('/api/v1/database/list'),
+
+  /**
+   * Get detailed database information
+   */
+  getDatabaseDetail: (dbName: string) =>
+    apiFetch<DatabaseDetail>(`/api/v1/database/${dbName}/size`),
 
   /**
    * Get database statistics

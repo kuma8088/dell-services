@@ -19,9 +19,13 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { wordpressAPI } from '@/lib/api'
+import CreateManagedSiteModal from '@/components/CreateManagedSiteModal'
+import ManagedSitesList from '@/components/ManagedSitesList'
 
 export default function WordPressManagement() {
+  const [activeTab, setActiveTab] = useState<'existing' | 'managed'>('existing')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showRestoreModal, setShowRestoreModal] = useState(false)
   const [selectedSite, setSelectedSite] = useState<string | null>(null)
@@ -103,26 +107,42 @@ export default function WordPressManagement() {
         </p>
       </div>
 
-      {/* Actions */}
-      <div className="flex gap-4">
-        <div className="flex-1 relative">
-          <input
-            type="text"
-            placeholder="サイトを検索..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'existing' | 'managed')}>
+        <div className="flex items-center justify-between mb-6">
+          <TabsList>
+            <TabsTrigger value="existing">
+              既存サイト ({sites?.length || 0})
+            </TabsTrigger>
+            <TabsTrigger value="managed">
+              管理サイト
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="flex gap-4">
+            <div className="w-64 relative">
+              <input
+                type="text"
+                placeholder="サイトを検索..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
+            </div>
+            {activeTab === 'managed' && (
+              <Button onClick={() => setShowCreateModal(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                新規サイト作成
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => handleAction('refresh')}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              更新
+            </Button>
+          </div>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          新規サイト作成
-        </Button>
-        <Button variant="outline" onClick={() => handleAction('refresh')}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          更新
-        </Button>
-      </div>
+
+        <TabsContent value="existing" className="space-y-8">{/* Existing sites tab content */}
 
       {/* Statistics */}
       <div className="grid gap-6 sm:grid-cols-4">
@@ -269,97 +289,19 @@ export default function WordPressManagement() {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
-      {/* Create modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-2xl">
-            <CardHeader>
-              <CardTitle>新規WordPressサイト作成</CardTitle>
-              <CardDescription>
-                サイト情報を入力してください
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">サイト名</label>
-                <input
-                  type="text"
-                  placeholder="例: my-new-site"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
+        {/* Managed sites tab */}
+        <TabsContent value="managed" className="space-y-8">
+          <ManagedSitesList searchQuery={searchQuery} />
+        </TabsContent>
+      </Tabs>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">ドメイン/URL</label>
-                <input
-                  type="text"
-                  placeholder="例: blog.kuma8088.com/my-site"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">管理者メールアドレス</label>
-                <input
-                  type="email"
-                  placeholder="admin@example.com"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">サイトタイトル</label>
-                <input
-                  type="text"
-                  placeholder="例: My Awesome Blog"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="install-wordfence" defaultChecked />
-                <label htmlFor="install-wordfence" className="text-sm">
-                  Wordfence Security を自動インストール（推奨）
-                </label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="install-redis" defaultChecked />
-                <label htmlFor="install-redis" className="text-sm">
-                  Redis Object Cache を自動設定（推奨）
-                </label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="install-smtp" defaultChecked />
-                <label htmlFor="install-smtp" className="text-sm">
-                  WP Mail SMTP を自動設定（推奨）
-                </label>
-              </div>
-
-              <div className="flex gap-2 pt-4">
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    handleAction('create')
-                    setShowCreateModal(false)
-                  }}
-                >
-                  作成
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  キャンセル
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Create Managed Site Modal */}
+      <CreateManagedSiteModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+      />
 
       {/* Restore modal */}
       {showRestoreModal && selectedSite && (

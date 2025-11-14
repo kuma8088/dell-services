@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Database, Plus, Trash2, RefreshCw, Download, Upload, Search, AlertCircle } from 'lucide-react'
+import { Database, Plus, Trash2, RefreshCw, Download, Upload, Search, AlertCircle, Info } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -9,18 +9,28 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { databaseAPI } from '@/lib/api'
+import DatabaseDetailModal from '@/components/DatabaseDetailModal'
 
 export default function DatabaseManagement() {
   const [selectedDb, setSelectedDb] = useState<string | null>(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const queryClient = useQueryClient()
+
+  // Query: Database status
+  const { data: status } = useQuery({
+    queryKey: ['database-status'],
+    queryFn: databaseAPI.getStatus,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  })
 
   // Query: List databases
   const { data: databases, isLoading, error } = useQuery({
     queryKey: ['databases'],
     queryFn: databaseAPI.listDatabases,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   })
 
   // Query: Database stats
@@ -36,12 +46,18 @@ export default function DatabaseManagement() {
 
   const handleAction = (action: string, dbName?: string) => {
     if (action === 'refresh') {
+      queryClient.invalidateQueries({ queryKey: ['database-status'] })
       queryClient.invalidateQueries({ queryKey: ['databases'] })
       queryClient.invalidateQueries({ queryKey: ['database-stats'] })
     } else {
       console.log(`${action}:`, dbName || 'all')
       // TODO: Implement other API calls
     }
+  }
+
+  const handleDatabaseClick = (dbName: string) => {
+    setSelectedDb(dbName)
+    setShowDetailModal(true)
   }
 
   // Loading state
@@ -75,11 +91,23 @@ export default function DatabaseManagement() {
     <div className="space-y-8">
       {/* Page header */}
       <div>
-        <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
-          データベース管理
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+            データベース管理
+          </h2>
+          {status && (
+            <Badge variant={status.connected ? 'default' : 'destructive'}>
+              {status.connected ? '接続中' : '未接続'}
+            </Badge>
+          )}
+        </div>
         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-          MariaDBデータベースの管理を行います
+          MariaDBデータベースの管理を行います（自動更新: 30秒）
+          {status && status.connected && (
+            <span className="ml-2">
+              • {status.version.split('-')[0]} • 稼働時間: {Math.floor(status.uptime / 3600)}時間
+            </span>
+          )}
         </p>
       </div>
 
@@ -166,10 +194,7 @@ export default function DatabaseManagement() {
             {filteredDatabases?.map((db) => (
               <div
                 key={db.name}
-                className={`flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
-                  selectedDb === db.name ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700' : ''
-                }`}
-                onClick={() => setSelectedDb(db.name)}
+                className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 <div className="flex items-center gap-4">
                   <Database className="h-8 w-8 text-primary" />
@@ -181,40 +206,49 @@ export default function DatabaseManagement() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
-
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleAction('export', db.name)
-                      }}
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleAction('import', db.name)
-                      }}
-                    >
-                      <Upload className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleAction('delete', db.name)
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDatabaseClick(db.name)}
+                    title="詳細を表示"
+                  >
+                    <Info className="h-4 w-4 mr-1" />
+                    詳細
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleAction('export', db.name)
+                    }}
+                    title="エクスポート"
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleAction('import', db.name)
+                    }}
+                    title="インポート"
+                  >
+                    <Upload className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleAction('delete', db.name)
+                    }}
+                    title="削除"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             ))}
@@ -222,34 +256,15 @@ export default function DatabaseManagement() {
         </CardContent>
       </Card>
 
-      {/* Query executor (if database selected) */}
-      {selectedDb && (
-        <Card>
-          <CardHeader>
-            <CardTitle>SQLクエリ実行</CardTitle>
-            <CardDescription>
-              {selectedDb} に対してSQLクエリを実行
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <textarea
-              placeholder="SELECT * FROM wp_posts LIMIT 10;"
-              className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none font-mono"
-            />
-            <div className="flex gap-2">
-              <Button onClick={() => handleAction('execute', selectedDb)}>
-                クエリ実行
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleAction('explain', selectedDb)}
-              >
-                EXPLAIN
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Database Detail Modal */}
+      <DatabaseDetailModal
+        isOpen={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false)
+          setSelectedDb(null)
+        }}
+        databaseName={selectedDb}
+      />
     </div>
   )
 }
