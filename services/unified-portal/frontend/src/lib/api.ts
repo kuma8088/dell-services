@@ -320,6 +320,114 @@ export const wordpressAPI = {
 }
 
 // ============================================================================
+// Managed WordPress Sites API Types (New Site Lifecycle Management)
+// ============================================================================
+
+export interface ManagedWordPressSite {
+  id: number
+  site_name: string
+  domain: string
+  database_name: string
+  php_version: string
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ManagedSiteCreate {
+  site_name: string
+  domain: string
+  database_name?: string
+  php_version: string
+}
+
+export interface ManagedSiteUpdate {
+  domain?: string
+  php_version?: string
+  enabled?: boolean
+}
+
+export interface ManagedSiteStats {
+  posts: number
+  pages: number
+  plugins: number
+  themes: number
+  users: number
+  db_size_mb: number
+}
+
+export interface CacheControlRequest {
+  cache_type: 'all' | 'redis' | 'transients' | 'rewrite'
+}
+
+// ============================================================================
+// Managed WordPress Sites API Functions
+// ============================================================================
+
+export const managedSitesAPI = {
+  /**
+   * List all managed WordPress sites
+   */
+  listSites: (enabledOnly?: boolean) =>
+    apiFetch<ManagedWordPressSite[]>(
+      `/api/v1/wordpress/managed-sites${enabledOnly ? '?enabled_only=true' : ''}`
+    ),
+
+  /**
+   * Get managed site by ID
+   */
+  getSite: (siteId: number) =>
+    apiFetch<ManagedWordPressSite>(`/api/v1/wordpress/managed-sites/${siteId}`),
+
+  /**
+   * Create new managed WordPress site
+   */
+  createSite: (siteData: ManagedSiteCreate) =>
+    apiFetch<ManagedWordPressSite>('/api/v1/wordpress/managed-sites', {
+      method: 'POST',
+      body: JSON.stringify(siteData),
+    }),
+
+  /**
+   * Update managed WordPress site
+   */
+  updateSite: (siteId: number, siteData: ManagedSiteUpdate) =>
+    apiFetch<ManagedWordPressSite>(`/api/v1/wordpress/managed-sites/${siteId}`, {
+      method: 'PUT',
+      body: JSON.stringify(siteData),
+    }),
+
+  /**
+   * Delete managed WordPress site
+   */
+  deleteSite: (siteId: number, deleteDatabase?: boolean) =>
+    apiFetch<void>(
+      `/api/v1/wordpress/managed-sites/${siteId}${deleteDatabase ? '?delete_database=true' : ''}`,
+      {
+        method: 'DELETE',
+      }
+    ),
+
+  /**
+   * Get managed site statistics
+   */
+  getSiteStats: (siteId: number) =>
+    apiFetch<ManagedSiteStats>(`/api/v1/wordpress/managed-sites/${siteId}/stats`),
+
+  /**
+   * Clear managed site cache
+   */
+  clearCache: (siteId: number, cacheType: CacheControlRequest) =>
+    apiFetch<{ success: boolean; message: string }>(
+      `/api/v1/wordpress/managed-sites/${siteId}/cache/clear`,
+      {
+        method: 'POST',
+        body: JSON.stringify(cacheType),
+      }
+    ),
+}
+
+// ============================================================================
 // Database API Types
 // ============================================================================
 
