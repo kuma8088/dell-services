@@ -68,6 +68,33 @@ export interface DNSRecordUpdate {
   priority?: number
 }
 
+export interface DNSRecordImportError {
+  row: number
+  record: Record<string, string>
+  error: string
+}
+
+export interface DNSRecordImportResult {
+  success_count: number
+  error_count: number
+  errors: DNSRecordImportError[]
+}
+
+export interface DNSVerificationServerResult {
+  server: string
+  status: 'success' | 'failed' | 'timeout'
+  records: string[]
+  error: string | null
+}
+
+export interface DNSVerificationResult {
+  record_type: string
+  name: string
+  servers: DNSVerificationServerResult[]
+  propagated: boolean
+  expected_content: string | null
+}
+
 // ============================================================================
 // API Functions
 // ============================================================================
@@ -127,4 +154,53 @@ export async function deleteDNSRecord(
   return apiFetch(`/api/v1/domains/${domain}/dns/${recordId}`, {
     method: 'DELETE',
   })
+}
+
+/**
+ * Import DNS records from CSV file
+ */
+export async function importDNSRecords(
+  domain: string,
+  file: File
+): Promise<DNSRecordImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const url = `${API_BASE_URL}/api/v1/domains/${domain}/dns/import`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(error.detail || `API error: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Verify DNS record propagation
+ */
+export async function verifyDNSRecord(
+  domain: string,
+  recordType: string,
+  recordName: string,
+  expectedContent?: string
+): Promise<DNSVerificationResult> {
+  const params = new URLSearchParams({
+    record_type: recordType,
+    record_name: recordName,
+  })
+
+  if (expectedContent) {
+    params.append('expected_content', expectedContent)
+  }
+
+  return apiFetch<DNSVerificationResult>(
+    `/api/v1/domains/${domain}/dns/verify?${params.toString()}`,
+    { method: 'POST' }
+  )
 }
