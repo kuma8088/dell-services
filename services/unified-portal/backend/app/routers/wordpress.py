@@ -13,6 +13,7 @@ from pydantic import BaseModel
 import subprocess
 import json
 
+from app.auth import get_current_user
 from app.database import get_db
 from app.schemas.wordpress import (
     WordPressSiteCacheControl,
@@ -410,6 +411,7 @@ async def get_wordpress_stats():
 def list_managed_wordpress_sites(
     enabled_only: bool = False,
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     """
     List all managed WordPress sites from database.
@@ -420,6 +422,7 @@ def list_managed_wordpress_sites(
     Args:
         enabled_only: Only return enabled sites
         db: Database session
+        current_user: Current authenticated user
 
     Returns:
         List of managed WordPress sites
@@ -433,6 +436,7 @@ def list_managed_wordpress_sites(
 def get_managed_wordpress_site(
     site_id: int,
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     """
     Get managed WordPress site by ID.
@@ -440,6 +444,7 @@ def get_managed_wordpress_site(
     Args:
         site_id: Site ID
         db: Database session
+        current_user: Current authenticated user
 
     Returns:
         WordPress site details
@@ -460,6 +465,7 @@ def get_managed_wordpress_site(
 def create_managed_wordpress_site(
     site_data: WordPressSiteCreate,
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     """
     Create a new WordPress site.
@@ -473,6 +479,7 @@ def create_managed_wordpress_site(
     Args:
         site_data: Site creation data
         db: Database session
+        current_user: Current authenticated user
 
     Returns:
         Created WordPress site
@@ -494,6 +501,7 @@ def update_managed_wordpress_site(
     site_id: int,
     site_update: WordPressSiteUpdate,
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     """
     Update managed WordPress site configuration.
@@ -502,6 +510,7 @@ def update_managed_wordpress_site(
         site_id: Site ID
         site_update: Site update data
         db: Database session
+        current_user: Current authenticated user
 
     Returns:
         Updated WordPress site
@@ -523,6 +532,7 @@ def delete_managed_wordpress_site(
     site_id: int,
     delete_database: bool = False,
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     """
     Delete managed WordPress site.
@@ -531,6 +541,7 @@ def delete_managed_wordpress_site(
         site_id: Site ID
         delete_database: Also delete the database
         db: Database session
+        current_user: Current authenticated user
 
     Raises:
         HTTPException: If site not found or deletion fails
@@ -547,6 +558,7 @@ def delete_managed_wordpress_site(
 def get_managed_site_stats(
     site_id: int,
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     """
     Get managed WordPress site statistics.
@@ -554,6 +566,7 @@ def get_managed_site_stats(
     Args:
         site_id: Site ID
         db: Database session
+        current_user: Current authenticated user
 
     Returns:
         Site statistics (posts, pages, plugins, themes, users, db size)
@@ -575,6 +588,7 @@ def clear_managed_site_cache(
     site_id: int,
     cache_control: WordPressSiteCacheControl,
     db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
 ):
     """
     Clear managed WordPress site cache.
@@ -583,6 +597,7 @@ def clear_managed_site_cache(
         site_id: Site ID
         cache_control: Cache control options
         db: Database session
+        current_user: Current authenticated user
 
     Returns:
         Success status
