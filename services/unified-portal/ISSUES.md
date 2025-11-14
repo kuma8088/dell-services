@@ -1,171 +1,181 @@
-# Unified Portal - Issues
+# Unified Portal - 未解決の問題
 
-## 🔴 Issue #1: フロントエンドビルドエラー - UIコンポーネント不足
+最終更新: 2025-11-14
 
-**発生日時**: 2025-11-14 23:03
+---
+
+## 概要
+
+Unified Portalのフロントエンド開発における未解決の問題をトラッキングします。
+
+---
+
+## 🔴 Issue #1: UIコンポーネント不足（Critical）
+
 **優先度**: Critical
-**ステータス**: Open
-**担当**: 開発チーム
+**影響範囲**: フロントエンドビルド全体
+**ステータス**: 未解決
 
-### 問題概要
+### 問題
 
-フロントエンドのビルドが失敗しているため、DomainManagement.tsxに実装した2カラムレイアウトの変更が本番環境に反映されない。
-
-### エラー詳細
-
-```
-src/pages/AdminUserManagement.tsx(41,41): error TS2307: Cannot find module '@/components/ui/alert' or its corresponding type declarations.
-src/pages/DatabaseManagement.tsx(12,23): error TS2307: Cannot find module '@/components/ui/badge' or its corresponding type declarations.
-src/pages/WordPressManagement.tsx(22,58): error TS2307: Cannot find module '@/components/ui/tabs' or its corresponding type declarations.
-```
+shadcn/uiのUIコンポーネントが不足しているため、フロントエンドビルドが失敗します。
 
 ### 不足しているコンポーネント
 
-1. `@/components/ui/alert` - AdminUserManagement.tsxで使用
-2. `@/components/ui/badge` - DatabaseManagement.tsxで使用
-3. `@/components/ui/tabs` - WordPressManagement.tsxで使用
+1. `alert` - Dashboard.tsx, Security.tsx等で使用
+2. `badge` - Docker.tsx等で使用
+3. `tabs` - Dashboard.tsx等で使用
 
-### 影響範囲
+### エラーメッセージ
 
-- フロントエンド全体のビルドが失敗
-- Docker イメージのビルドが完了しない
-- コード変更（2カラムレイアウト実装）が本番環境に反映されない
+```
+ERROR in ./src/pages/Dashboard.tsx
+Module not found: Error: Can't resolve '@/components/ui/alert'
+
+ERROR in ./src/pages/Docker.tsx
+Module not found: Error: Can't resolve '@/components/ui/badge'
+
+ERROR in ./src/pages/Dashboard.tsx
+Module not found: Error: Can't resolve '@/components/ui/tabs'
+```
 
 ### 修正方針
 
-以下のいずれかを実施:
+shadcn-uiのCLIを使用してコンポーネントを追加します。
 
-**Option 1: UIコンポーネントを追加** (推奨)
+### 修正コマンド
+
 ```bash
 cd /opt/onprem-infra-system/project-root-infra/services/unified-portal/frontend
+
+# 不足しているコンポーネントを追加
 npx shadcn-ui@latest add alert
 npx shadcn-ui@latest add badge
 npx shadcn-ui@latest add tabs
 ```
 
-**Option 2: 使用している箇所をコメントアウト** (一時的対処)
-- AdminUserManagement.tsx: 41行目のalert import削除
-- DatabaseManagement.tsx: 12行目のbadge import削除
-- WordPressManagement.tsx: 22行目のtabs import削除
-
-### 関連ファイル
-
-- `/opt/onprem-infra-system/project-root-infra/services/unified-portal/frontend/src/pages/AdminUserManagement.tsx`
-- `/opt/onprem-infra-system/project-root-infra/services/unified-portal/frontend/src/pages/DatabaseManagement.tsx`
-- `/opt/onprem-infra-system/project-root-infra/services/unified-portal/frontend/src/pages/WordPressManagement.tsx`
-
----
-
-## 🟡 Issue #2: TypeScriptエラー - IntersectionObserver型不一致
-
-**発生日時**: 2025-11-14 23:03
-**優先度**: Medium
-**ステータス**: Open
-**担当**: 開発チーム
-
-### 問題概要
-
-テストセットアップファイルでIntersectionObserverの型定義エラーが発生。
-
-### エラー詳細
-
-```
-src/test/setup.ts(26,1): error TS2322: Type 'typeof IntersectionObserver' is not assignable to type '{ new (callback: IntersectionObserverCallback, options?: IntersectionObserverInit | undefined): IntersectionObserver; prototype: IntersectionObserver; }'.
-  Types of property 'prototype' are incompatible.
-    Type 'IntersectionObserver' is missing the following properties from type 'IntersectionObserver': root, rootMargin, thresholds
-```
-
-### 現在のコード (setup.ts:26)
-
-```typescript
-globalThis.IntersectionObserver = class IntersectionObserver {
-  constructor() {}
-  disconnect() {}
-  observe() {}
-  takeRecords() {
-    return []
-  }
-  unobserve() {}
-}
-```
-
-### 修正方針
-
-IntersectionObserverモックに不足しているプロパティを追加:
-
-```typescript
-globalThis.IntersectionObserver = class IntersectionObserver {
-  root = null
-  rootMargin = '0px'
-  thresholds = []
-
-  constructor() {}
-  disconnect() {}
-  observe() {}
-  takeRecords() {
-    return []
-  }
-  unobserve() {}
-} as any
-```
-
-### 関連ファイル
-
-- `/opt/onprem-infra-system/project-root-infra/services/unified-portal/frontend/src/test/setup.ts`
-
----
-
-## 🟡 Issue #3: TypeScript警告 - 未使用import
-
-**発生日時**: 2025-11-14 23:03
-**優先度**: Low
-**ステータス**: Open
-**担当**: 開発チーム
-
-### 問題概要
-
-MailserverManagement.tsxで未使用のimportに関する警告。
-
-### エラー詳細
-
-```
-src/pages/MailserverManagement.tsx(12,3): error TS6133: 'CardDescription' is declared but its value is never read.
-src/pages/MailserverManagement.tsx(13,3): error TS6133: 'CardHeader' is declared but its value is never read.
-src/pages/MailserverManagement.tsx(14,3): error TS6133: 'CardTitle' is declared but its value is never read.
-```
-
-### 修正方針
-
-未使用のimportを削除:
-
-```typescript
-// 削除対象
-import {
-  CardDescription,  // 削除
-  CardHeader,       // 削除
-  CardTitle,        // 削除
-} from '@/components/ui/card'
-```
-
-### 関連ファイル
-
-- `/opt/onprem-infra-system/project-root-infra/services/unified-portal/frontend/src/pages/MailserverManagement.tsx`
-
----
-
-## 📋 Issue修正の優先順位
-
-1. **Critical - Issue #1**: UIコンポーネント不足の解消（ビルドブロッカー）
-2. **Medium - Issue #2**: IntersectionObserver型エラーの修正
-3. **Low - Issue #3**: 未使用import警告の解消
-
-## ビルド成功条件
-
-すべてのIssueを修正後、以下のコマンドでビルドが成功すること:
+### 修正後の確認
 
 ```bash
 cd /opt/onprem-infra-system/project-root-infra/services/unified-portal
+
+# ビルド実行
 docker compose build frontend
+
+# コンテナ再起動
+docker compose up -d frontend
+
+# ログ確認
+docker compose logs -f frontend
 ```
 
-期待される結果: `exit code: 0`（ビルド成功）
+### 影響を受けるファイル
+
+- `frontend/src/pages/Dashboard.tsx`
+- `frontend/src/pages/Docker.tsx`
+- `frontend/src/pages/Security.tsx`
+
+---
+
+## 🟡 Issue #2: IntersectionObserver型エラー（Medium）
+
+**優先度**: Medium
+**影響範囲**: Backup.tsx
+**ステータス**: 未解決
+
+### 問題
+
+`Backup.tsx:72:30`で`IntersectionObserver`の型エラーが発生しています。
+
+### エラーメッセージ
+
+```
+TS2769: No overload matches this call.
+  Overload 1 of 2, '(callback: IntersectionObserverCallback, options?: IntersectionObserverInit | undefined): IntersectionObserver', gave the following error.
+    Argument of type '(entries: any) => void' is not assignable to parameter of type 'IntersectionObserverCallback'.
+```
+
+### 修正方針
+
+`IntersectionObserverCallback`型を明示的に指定します。
+
+### 修正例
+
+```typescript
+// 修正前
+const observer = new IntersectionObserver((entries) => {
+  // ...
+});
+
+// 修正後
+const observer = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
+  // ...
+});
+```
+
+### 影響を受けるファイル
+
+- `frontend/src/pages/Backup.tsx:72`
+
+---
+
+## 🟡 Issue #3: 未使用import警告（Low）
+
+**優先度**: Low
+**影響範囲**: Database.tsx
+**ステータス**: 未解決
+
+### 問題
+
+`Database.tsx:11:10`で未使用のimport `DatabaseIcon`に関する警告が発生しています。
+
+### エラーメッセージ
+
+```
+'DatabaseIcon' is defined but never used. (@typescript-eslint/no-unused-vars)
+```
+
+### 修正方針
+
+1. `DatabaseIcon`を使用するコードを追加する
+2. または、使用しない場合はimport文を削除する
+
+### 修正例（Option 1: 削除）
+
+```typescript
+// 修正前
+import { DatabaseIcon, Server, RefreshCw, AlertCircle } from 'lucide-react';
+
+// 修正後
+import { Server, RefreshCw, AlertCircle } from 'lucide-react';
+```
+
+### 影響を受けるファイル
+
+- `frontend/src/pages/Database.tsx:11`
+
+---
+
+## 📋 Issue一覧サマリー
+
+| Issue | 優先度 | ステータス | 影響範囲 |
+|-------|--------|------------|----------|
+| #1: UIコンポーネント不足 | 🔴 Critical | 未解決 | ビルド全体 |
+| #2: IntersectionObserver型エラー | 🟡 Medium | 未解決 | Backup.tsx |
+| #3: 未使用import警告 | 🟡 Low | 未解決 | Database.tsx |
+
+---
+
+## 次のアクション
+
+1. **最優先**: Issue #1を修正してビルドを成功させる
+2. Issue #2の型エラーを修正
+3. Issue #3のコード整理
+
+---
+
+## 参考リンク
+
+- [shadcn/ui Documentation](https://ui.shadcn.com/)
+- [TypeScript Handbook - Intersection Types](https://www.typescriptlang.org/docs/handbook/2/objects.html#intersection-types)
+- [ESLint no-unused-vars](https://eslint.org/docs/latest/rules/no-unused-vars)
