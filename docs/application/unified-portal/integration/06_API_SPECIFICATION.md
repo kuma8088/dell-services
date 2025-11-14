@@ -326,6 +326,321 @@ Authorization: Bearer <access_token>
 
 ---
 
+## 7. WordPress管理
+
+### 7.1 サイト一覧取得
+```
+GET /wordpress/sites
+Query Parameters:
+  - skip (optional): オフセット（default: 0）
+  - limit (optional): 取得件数（default: 20）
+
+Response: 200 OK
+{
+  "sites": [
+    {
+      "id": 1,
+      "site_name": "kuma8088",
+      "domain": "kuma8088.com",
+      "database_name": "wp_kuma8088",
+      "php_version": "8.2",
+      "enabled": true,
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "total": 16
+}
+```
+
+### 7.2 サイト作成
+```
+POST /wordpress/sites
+Body:
+{
+  "site_name": "newsite",
+  "domain": "newsite.kuma8088.com",
+  "database_option": "auto",  // "auto" or "existing"
+  "database_name": "wp_newsite",  // database_option="existing" の場合必須
+  "php_version": "8.2",
+  "admin_user": "admin",
+  "admin_password": "SecurePass123!",
+  "admin_email": "admin@kuma8088.com"
+}
+
+Response: 201 Created
+{
+  "id": 17,
+  "site_name": "newsite",
+  "domain": "newsite.kuma8088.com",
+  "database_name": "wp_newsite",
+  "php_version": "8.2",
+  "enabled": true,
+  "created_at": "2025-11-14T12:00:00Z"
+}
+
+Side Effect:
+- データベース作成（database_option="auto" の場合）
+- wp-cli core install実行
+- WP Mail SMTP自動設定
+- Nginx設定生成 + nginx -s reload
+```
+
+### 7.3 サイト更新（PHPバージョン切り替え）
+```
+PUT /wordpress/sites/{site_name}
+Body:
+{
+  "domain": "kuma8088.com",  // optional
+  "php_version": "8.1",  // PHPバージョン変更時にNginx再生成
+  "enabled": false  // optional
+}
+
+Response: 200 OK
+
+Side Effect (php_version変更時):
+- Nginx設定再生成（fastcgi_pass変更）
+- nginx -t 実行
+- nginx -s reload 実行（ダウンタイムなし）
+```
+
+### 7.4 サイト削除
+```
+DELETE /wordpress/sites/{site_name}
+Response: 204 No Content
+
+Side Effect:
+- wp-cli core uninstall実行
+- Nginx設定削除
+- wordpress_sitesテーブルから削除
+```
+
+---
+
+## 8. Database管理
+
+### 8.1 データベース一覧取得
+```
+GET /database/databases
+Query Parameters:
+  - target (required): "blog" or "mailserver"
+
+Response: 200 OK
+{
+  "databases": [
+    {
+      "name": "wp_kuma8088",
+      "charset": "utf8mb4",
+      "size_mb": 120.5,
+      "table_count": 15
+    },
+    {
+      "name": "wp_demo1",
+      "charset": "utf8mb4",
+      "size_mb": 45.2,
+      "table_count": 12
+    }
+  ],
+  "total": 16
+}
+```
+
+### 8.2 データベース作成
+```
+POST /database/databases
+Body:
+{
+  "name": "wp_newsite",
+  "charset": "utf8mb4",
+  "target": "blog"
+}
+
+Response: 201 Created
+{
+  "name": "wp_newsite",
+  "charset": "utf8mb4",
+  "username": "wp_newsite_user",
+  "created_at": "2025-11-14T12:00:00Z"
+}
+
+Side Effect:
+- CREATE DATABASE実行
+- 専用ユーザー作成（{name}_user）
+- GRANT ALL PRIVILEGES実行
+- パスワード暗号化保存（db_credentials）
+```
+
+### 8.3 データベース削除
+```
+DELETE /database/databases/{name}
+Query Parameters:
+  - target (required): "blog" or "mailserver"
+
+Response: 204 No Content
+```
+
+### 8.4 データベースユーザー一覧
+```
+GET /database/users
+Query Parameters:
+  - target (required): "blog" or "mailserver"
+
+Response: 200 OK
+{
+  "users": [
+    {
+      "username": "wp_kuma8088_user",
+      "host": "%",
+      "privileges": ["SELECT", "INSERT", "UPDATE", "DELETE"]
+    }
+  ]
+}
+```
+
+### 8.5 データベースユーザー作成
+```
+POST /database/users
+Body:
+{
+  "username": "newuser",
+  "password": "SecurePass123!",
+  "database_name": "wp_newsite",
+  "target": "blog"
+}
+
+Response: 201 Created
+
+Side Effect:
+- CREATE USER実行
+- パスワード暗号化保存（db_credentials）
+```
+
+### 8.6 SQLクエリ実行
+```
+POST /database/query
+Body:
+{
+  "query": "SELECT * FROM wp_posts LIMIT 10",
+  "target": "blog",
+  "database_name": "wp_kuma8088"
+}
+
+Response: 200 OK
+{
+  "result": [
+    {"id": 1, "post_title": "Hello World", ...}
+  ],
+  "row_count": 10,
+  "execution_time_ms": 15
+}
+
+制限:
+- SELECT文のみ許可（デフォルト）
+- INSERT/UPDATE/DELETE: Super Adminのみ
+- DROP/ALTER: 実行不可
+```
+
+---
+
+## 9. PHP管理
+
+### 9.1 PHPバージョン一覧
+```
+GET /php/versions
+
+Response: 200 OK
+{
+  "versions": [
+    {
+      "version": "7.4",
+      "status": "running",
+      "site_count": 2,
+      "container_id": "php74-fpm-1"
+    },
+    {
+      "version": "8.0",
+      "status": "running",
+      "site_count": 5,
+      "container_id": "php80-fpm-1"
+    },
+    {
+      "version": "8.1",
+      "status": "running",
+      "site_count": 4,
+      "container_id": "php81-fpm-1"
+    },
+    {
+      "version": "8.2",
+      "status": "running",
+      "site_count": 5,
+      "container_id": "php82-fpm-1"
+    }
+  ]
+}
+```
+
+### 9.2 PHPバージョン追加
+```
+POST /php/versions
+Body:
+{
+  "version": "8.3"
+}
+
+Response: 201 Created
+{
+  "version": "8.3",
+  "status": "running",
+  "site_count": 0
+}
+
+Side Effect:
+- docker-compose.ymlにphp-fpmサービス追加
+- docker compose up -d実行
+- ヘルスチェック
+```
+
+### 9.3 PHPバージョン削除
+```
+DELETE /php/versions/{version}
+
+Response: 204 No Content
+
+前提条件:
+- site_count == 0（使用サイト数0）
+
+Side Effect:
+- docker compose stop php{version}-fpm
+- docker-compose.ymlから削除
+```
+
+### 9.4 PHP設定取得
+```
+GET /php/versions/{version}/config
+
+Response: 200 OK
+{
+  "php_ini": "memory_limit = 256M\nupload_max_filesize = 64M\n...",
+  "fpm_config": "pm = dynamic\npm.max_children = 50\n..."
+}
+```
+
+### 9.5 PHP設定更新
+```
+PUT /php/versions/{version}/config
+Body:
+{
+  "php_ini": "memory_limit = 512M\n..."
+}
+
+Response: 200 OK
+
+Side Effect:
+- php.ini書き込み
+- docker compose restart php{version}-fpm
+```
+
+---
+
 ## ⚠️ エラーレスポンス
 
 ### 400 Bad Request
