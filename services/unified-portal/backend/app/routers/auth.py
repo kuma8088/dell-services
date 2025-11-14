@@ -191,7 +191,13 @@ def create_admin_user(
     service = get_admin_user_service(db)
 
     try:
-        user = service.create_user(user_data)
+        user = service.create_user(
+            username=user_data.username,
+            email=user_data.email,
+            password=user_data.password,
+            full_name=user_data.full_name,
+            is_superuser=user_data.is_superuser,
+        )
         return user
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
