@@ -414,18 +414,21 @@ export default function DomainManagement() {
         </Card>
       </div>
 
-      {/* Domains list */}
-      {!zonesLoading && domains && (
-        <Card>
-          <CardHeader>
-            <CardTitle>ドメイン一覧（Cloudflare）</CardTitle>
-            <CardDescription>
-              管理中のドメインとその設定状況 - 全{domains.length}ドメイン
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {domains.map((domain) => (
+      {/* 2-column layout: Domain list (left) + Domain details (right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left column: Domains list (30%) */}
+        <div className="lg:col-span-4">
+          {!zonesLoading && domains && (
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>ドメイン一覧（Cloudflare）</CardTitle>
+                <CardDescription>
+                  管理中のドメインとその設定状況 - 全{domains.length}ドメイン
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="max-h-[calc(100vh-400px)] overflow-y-auto">
+                <div className="space-y-4">
+                  {domains.map((domain) => (
                 <div
                   key={domain.id}
                   className={`flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer ${
@@ -503,17 +506,20 @@ export default function DomainManagement() {
                     </Button>
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
-      {/* Domain details (if selected) */}
-      {selectedDomain && (
-        <>
-          {/* Tabs */}
-          <div className="border-b border-gray-200 dark:border-gray-700">
+        {/* Right column: Domain details (70%) */}
+        <div className="lg:col-span-8">
+          {selectedDomain ? (
+            <Card className="h-full">
+              <CardContent className="p-0">
+                {/* Tabs */}
+                <div className="border-b border-gray-200 dark:border-gray-700 px-6">
             <nav className="flex space-x-8">
               {[
                 { id: 'overview', label: '概要' },
@@ -538,8 +544,8 @@ export default function DomainManagement() {
 
           {/* Tab content */}
           {activeTab === 'dns' && (
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+            <div className="p-6">
+              <div className="flex flex-row items-center justify-between mb-6">
                 <div>
                   <CardTitle>DNS レコード: {selectedDomain}</CardTitle>
                   <CardDescription>
@@ -604,8 +610,8 @@ export default function DomainManagement() {
                     レコード追加
                   </Button>
                 </div>
-              </CardHeader>
-              <CardContent>
+              </div>
+              <div>
                 {dnsLoading ? (
                   <p className="text-center text-muted-foreground py-8">
                     Loading DNS records...
@@ -699,19 +705,19 @@ export default function DomainManagement() {
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           {activeTab === 'mail' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>メール設定: {selectedDomain}</CardTitle>
-                <CardDescription>
+            <div className="p-6">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold">メール設定: {selectedDomain}</h3>
+                <p className="text-sm text-muted-foreground">
                   メールアカウントとSMTP設定
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </p>
+              </div>
+              <div>
                 <div className="space-y-4">
                   <div className="p-4 border rounded-lg">
                     <h4 className="font-medium mb-2">SMTP設定</h4>
@@ -749,30 +755,37 @@ export default function DomainManagement() {
                     メールユーザー管理
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
 
           {activeTab === 'wordpress' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>WordPress設定: {selectedDomain}</CardTitle>
-                <CardDescription>
+            <div className="p-6">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold">WordPress設定: {selectedDomain}</h3>
+                <p className="text-sm text-muted-foreground">
                   このドメインで稼働中のWordPressサイト
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </p>
+              </div>
+              <div>
                 <p className="text-sm text-muted-foreground mb-4">
                   このドメインには {domains?.find((d) => d.name === selectedDomain)?.wordpressSites} 個のWordPressサイトがあります
                 </p>
                 <Button onClick={() => handleAction('view-wp-sites', selectedDomain)}>
                   WordPressサイト一覧を表示
                 </Button>
+              </div>
+            </div>
+          )}
               </CardContent>
             </Card>
+          ) : (
+            <div className="flex items-center justify-center h-64 text-muted-foreground">
+              <p>左側のドメイン一覧からドメインを選択してください</p>
+            </div>
           )}
-        </>
-      )}
+        </div>
+      </div>
 
       {/* DNS record creation modal */}
       {showDNSModal && selectedDomain && (
