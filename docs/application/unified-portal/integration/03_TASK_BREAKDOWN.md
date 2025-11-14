@@ -1,10 +1,11 @@
 # タスク分解書（Web側/ローカル側明記）
 
-**プロジェクト**: Unified Portal - Mailserver統合 + DNS管理強化
+**プロジェクト**: Unified Portal - Mailserver統合 + WordPress管理 + Database管理 + PHP管理 + DNS管理強化
 
-**バージョン**: 1.0
+**バージョン**: 2.0
 
 **作成日**: 2025-11-14
+**更新日**: 2025-11-14 (WordPress/Database/PHP管理追加)
 
 ---
 
@@ -13,13 +14,14 @@
 | カテゴリ | Web側 | ローカル側 | 合計 |
 |---------|-------|-----------|------|
 | **Phase 1: Mailserver統合** | 25 | 8 | 33 |
+| **Phase 1-B: WordPress/DB/PHP統合** | 20 | 3 | 23 |
 | **Phase 2: DNS管理強化** | 10 | 2 | 12 |
-| **Phase 3: テスト** | 5 | 5 | 10 |
+| **Phase 3: テスト** | 8 | 7 | 15 |
 | **Phase 4: デプロイ** | 0 | 8 | 8 |
-| **合計** | **40** | **23** | **63** |
+| **合計** | **63** | **28** | **91** |
 
-**Web側実行時間**: 約6-8時間（Claude Code on the web）
-**ローカル側実行時間**: 約4-6時間（Dell WorkStation）
+**Web側実行時間**: 約10-12時間（Claude Code on the web）
+**ローカル側実行時間**: 約5-7時間（Dell WorkStation）
 
 ---
 
@@ -471,6 +473,376 @@ export interface UserUpdateData {
 
 ---
 
+### Phase 1-B-W: WordPress/Database/PHP統合 - バックエンド実装
+
+#### W-041: WordPressSiteモデル作成
+**実行場所**: 🌐 Web側
+**所要時間**: 20分
+
+**ファイル**: `services/unified-portal/backend/app/models/wordpress_site.py`（NEW）
+
+**内容**:
+```python
+from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from datetime import datetime
+from app.database import Base
+
+class WordPressSite(Base):
+    __tablename__ = "wordpress_sites"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    site_name = Column(String(100), unique=True, nullable=False, index=True)
+    domain = Column(String(255), unique=True, nullable=False, index=True)
+    database_name = Column(String(100), nullable=False)
+    php_version = Column(String(10), nullable=False, index=True)  # "7.4", "8.0", "8.1", "8.2"
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+```
+
+**依存**: なし
+
+---
+
+#### W-042: AdminUser + PasswordReset + DBCredential モデル作成
+**実行場所**: 🌐 Web側
+**所要時間**: 40分
+
+**ファイル**:
+- `services/unified-portal/backend/app/models/admin_user.py`（NEW）
+- `services/unified-portal/backend/app/models/password_reset.py`（NEW）
+- `services/unified-portal/backend/app/models/db_credential.py`（NEW）
+
+**依存**: なし
+
+---
+
+#### W-043: WordPress/Database/PHP Pydanticスキーマ作成
+**実行場所**: 🌐 Web側
+**所要時間**: 60分
+
+**ファイル**:
+- `services/unified-portal/backend/app/schemas/wordpress.py`（NEW）
+- `services/unified-portal/backend/app/schemas/database.py`（NEW）
+- `services/unified-portal/backend/app/schemas/php.py`（NEW）
+
+**依存**: なし
+
+---
+
+#### W-044: EncryptionService + NginxConfigService 実装
+**実行場所**: 🌐 Web側
+**所要時間**: 60分
+
+**ファイル**:
+- `services/unified-portal/backend/app/services/encryption_service.py`（NEW）
+- `services/unified-portal/backend/app/services/nginx_config_service.py`（NEW）
+
+**内容**:
+- `EncryptionService`: Fernet対称暗号化
+- `NginxConfigService`: Nginx設定ファイル自動生成、nginx -t、nginx -s reload
+
+**依存**: なし
+
+---
+
+#### W-045: WordPressService実装
+**実行場所**: 🌐 Web側
+**所要時間**: 90分
+
+**ファイル**: `services/unified-portal/backend/app/services/wordpress_service.py`（NEW）
+
+**内容**:
+- `list_sites()`: サイト一覧取得
+- `create_site()`: サイト作成（DB作成、WordPress install、WP Mail SMTP設定、Nginx設定生成）
+- `update_site()`: サイト更新（PHPバージョン切り替え時にNginx再生成）
+- `delete_site()`: サイト削除
+
+**依存**: W-041, W-043, W-044
+
+---
+
+#### W-046: DatabaseService実装
+**実行場所**: 🌐 Web側
+**所要時間**: 90分
+
+**ファイル**: `services/unified-portal/backend/app/services/database_service.py`（NEW）
+
+**内容**:
+- `list_databases(target)`: DB一覧取得（Blog/Mailserver）
+- `create_database(name, charset, target)`: DB作成 + 専用ユーザー作成 + パスワード暗号化保存
+- `delete_database()`: DB削除
+- `list_users(target)`: DBユーザー一覧
+- `create_user()`: DBユーザー作成
+- `update_user_password()`: パスワード変更
+- `grant_privileges()`: 権限付与
+- `execute_query()`: SQL実行（権限チェック付き）
+
+**依存**: W-042, W-043, W-044
+
+---
+
+#### W-047: PhpService実装
+**実行場所**: 🌐 Web側
+**所要時間**: 60分
+
+**ファイル**: `services/unified-portal/backend/app/services/php_service.py`（NEW）
+
+**内容**:
+- `list_versions()`: インストール済みバージョン一覧 + 使用サイト数
+- `add_version()`: PHPバージョン追加（docker-compose.yml更新 + docker compose up）
+- `remove_version()`: PHPバージョン削除（使用サイト数0チェック）
+- `get_config()`: php.ini取得
+- `update_config()`: php.ini更新 + 再起動
+
+**依存**: W-041, W-043
+
+---
+
+#### W-048: AdminUserService + PasswordResetService + EmailService 実装
+**実行場所**: 🌐 Web側
+**所要時間**: 90分
+
+**ファイル**:
+- `services/unified-portal/backend/app/services/admin_user_service.py`（NEW）
+- `services/unified-portal/backend/app/services/password_reset_service.py`（NEW）
+- `services/unified-portal/backend/app/services/email_service.py`（NEW）
+
+**内容**:
+- `AdminUserService`: 管理者CRUD、ログイン、権限チェック
+- `PasswordResetService`: リセットトークン生成、検証、パスワードリセット実行
+- `EmailService`: メール送信（SMTP）
+
+**依存**: W-042, W-043, W-044
+
+---
+
+#### W-049: WordPress/Database/PHP APIルーター実装
+**実行場所**: 🌐 Web側
+**所要時間**: 120分
+
+**ファイル**:
+- `services/unified-portal/backend/app/routers/wordpress.py`（NEW）
+- `services/unified-portal/backend/app/routers/database.py`（NEW）
+- `services/unified-portal/backend/app/routers/php.py`（NEW）
+
+**内容**: 全エンドポイント実装（詳細は06_API_SPECIFICATION.md参照）
+
+**依存**: W-045, W-046, W-047
+
+---
+
+#### W-050: AdminUser + PasswordReset APIルーター実装
+**実行場所**: 🌐 Web側
+**所要時間**: 60分
+
+**ファイル**:
+- `services/unified-portal/backend/app/routers/admin_users.py`（NEW）
+- `services/unified-portal/backend/app/routers/password_reset.py`（NEW）
+
+**依存**: W-048
+
+---
+
+#### W-051: database.py更新（Blog DB接続追加）
+**実行場所**: 🌐 Web側
+**所要時間**: 30分
+
+**ファイル**: `services/unified-portal/backend/app/database.py`（既存更新）
+
+**追加内容**:
+- `blog_engine`: Blog MariaDB接続（172.20.0.30:3306）
+- `BlogSessionLocal`: Blog DB用セッション
+- `get_blog_db()`: 依存性インジェクション用
+- `get_db_connection(target)`: 動的接続先切り替え（Blog/Mailserver）
+
+**依存**: W-010（config.py）
+
+---
+
+#### W-052: config.py更新（Blog DB/Encryption/Email設定追加）
+**実行場所**: 🌐 Web側
+**所要時間**: 20分
+
+**ファイル**: `services/unified-portal/backend/app/config.py`（既存更新）
+
+**追加内容**:
+- `blog_db_*`: Blog DB接続情報
+- `encryption_key`: Fernet暗号化キー
+- `smtp_*`: メール送信設定
+- `blog_database_url` プロパティ
+
+**依存**: なし
+
+---
+
+#### W-053: main.py更新（新規ルーター登録）
+**実行場所**: 🌐 Web側
+**所要時間**: 15分
+
+**ファイル**: `services/unified-portal/backend/app/main.py`（既存更新）
+
+**追加内容**:
+```python
+from app.routers import wordpress, database, php, admin_users, password_reset
+
+app.include_router(wordpress.router, prefix="/api/v1/wordpress", tags=["WordPress"])
+app.include_router(database.router, prefix="/api/v1/database", tags=["Database"])
+app.include_router(php.router, prefix="/api/v1/php", tags=["PHP"])
+app.include_router(admin_users.router, prefix="/api/v1/admin-users", tags=["AdminUsers"])
+app.include_router(password_reset.router, prefix="/api/v1/password-reset", tags=["PasswordReset"])
+```
+
+**依存**: W-049, W-050
+
+---
+
+#### W-054: requirements.txt更新（依存関係追加）
+**実行場所**: 🌐 Web側
+**所要時間**: 10分
+
+**ファイル**: `services/unified-portal/backend/requirements.txt`（既存更新）
+
+**追加内容**:
+```
+cryptography>=41.0.0  # Fernet暗号化
+Jinja2>=3.1.0  # Nginx設定テンプレート
+docker>=6.1.0  # Docker操作（PHP-FPM管理）
+```
+
+**依存**: なし
+
+---
+
+### Phase 1-B-W: WordPress/Database/PHP統合 - フロントエンド実装
+
+#### W-055: TypeScript型定義作成（WordPress/Database/PHP）
+**実行場所**: 🌐 Web側
+**所要時間**: 45分
+
+**ファイル**:
+- `services/unified-portal/frontend/src/types/wordpress.ts`（NEW）
+- `services/unified-portal/frontend/src/types/database.ts`（NEW）
+- `services/unified-portal/frontend/src/types/php.ts`（NEW）
+
+**依存**: なし
+
+---
+
+#### W-056: APIクライアント作成（WordPress/Database/PHP）
+**実行場所**: 🌐 Web側
+**所要時間**: 60分
+
+**ファイル**:
+- `services/unified-portal/frontend/src/lib/wordpress-api.ts`（NEW）
+- `services/unified-portal/frontend/src/lib/database-api.ts`（NEW）
+- `services/unified-portal/frontend/src/lib/php-api.ts`（NEW）
+
+**依存**: W-055
+
+---
+
+#### W-057: WordPress管理コンポーネント作成
+**実行場所**: 🌐 Web側
+**所要時間**: 120分
+
+**ファイル**:
+- `services/unified-portal/frontend/src/components/wordpress/SiteTable.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/wordpress/SiteForm.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/wordpress/PhpVersionSelector.tsx`（NEW）
+
+**依存**: W-055
+
+---
+
+#### W-058: Database管理コンポーネント作成
+**実行場所**: 🌐 Web側
+**所要時間**: 120分
+
+**ファイル**:
+- `services/unified-portal/frontend/src/components/database/DatabaseTable.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/database/DatabaseForm.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/database/UserTable.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/database/UserForm.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/database/QueryExecutor.tsx`（NEW）
+
+**依存**: W-055
+
+---
+
+#### W-059: PHP管理コンポーネント作成
+**実行場所**: 🌐 Web側
+**所要時間**: 90分
+
+**ファイル**:
+- `services/unified-portal/frontend/src/components/php/VersionTable.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/php/ConfigEditor.tsx`（NEW）
+- `services/unified-portal/frontend/src/components/php/UsageStats.tsx`（NEW）
+
+**依存**: W-055
+
+---
+
+#### W-060: WordPress/Database/PHP管理ページ作成
+**実行場所**: 🌐 Web側
+**所要時間**: 150分
+
+**ファイル**:
+- `services/unified-portal/frontend/src/pages/WordPressManagement.tsx`（NEW）
+- `services/unified-portal/frontend/src/pages/DatabaseManagement.tsx`（NEW）
+- `services/unified-portal/frontend/src/pages/PhpManagement.tsx`（NEW）
+
+**依存**: W-056, W-057, W-058, W-059
+
+---
+
+#### W-061: App.tsxルーティング追加（WordPress/Database/PHP）
+**実行場所**: 🌐 Web側
+**所要時間**: 15分
+
+**ファイル**: `services/unified-portal/frontend/src/App.tsx`（既存更新）
+
+**追加内容**:
+```typescript
+<Route path="/wordpress" element={<WordPressManagement />} />
+<Route path="/database" element={<DatabaseManagement />} />
+<Route path="/php" element={<PhpManagement />} />
+<Route path="/admin-users" element={<AdminUserManagement />} />
+<Route path="/forgot-password" element={<ForgotPassword />} />
+<Route path="/reset-password/:token" element={<ResetPassword />} />
+```
+
+**依存**: W-060
+
+---
+
+#### W-062: Layout.tsxナビゲーション追加（WordPress/Database/PHP）
+**実行場所**: 🌐 Web側
+**所要時間**: 10分
+
+**ファイル**: `services/unified-portal/frontend/src/components/layout/Layout.tsx`（既存更新）
+
+**追加内容**: サイドバーに WordPress/Database/PHP管理リンク追加
+
+**依存**: なし
+
+---
+
+#### W-063: カスタムフック作成（WordPress/Database/PHP）
+**実行場所**: 🌐 Web側
+**所要時間**: 45分
+
+**ファイル**:
+- `services/unified-portal/frontend/src/hooks/useWordPressSites.ts`（NEW）
+- `services/unified-portal/frontend/src/hooks/useDatabases.ts`（NEW）
+- `services/unified-portal/frontend/src/hooks/usePhpVersions.ts`（NEW）
+
+**内容**: TanStack Query統合、キャッシング、自動再フェッチ
+
+**依存**: W-056
+
+---
+
 ### Phase 2-W: DNS管理強化（#017）
 
 #### W-026: DomainManagement強化 - Cloudflareリンクボタン追加
@@ -819,6 +1191,110 @@ npm run dev
 - 開発サーバー起動（http://localhost:5173）
 - ブラウザで画面表示
 - コンソールエラーなし
+
+---
+
+### Phase 1-B-L: WordPress/Database/PHP統合 - セットアップ&動作確認
+
+#### L-009: portal_admin ユーザー作成
+**実行場所**: 🖥️ ローカル
+**所要時間**: 20分
+
+**コマンド**:
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/unified-portal/backend
+
+# Blog MariaDB用 portal_admin作成
+docker exec blog-mariadb-1 mysql -u root -p<PASSWORD> <<EOF
+CREATE USER 'portal_admin'@'%' IDENTIFIED BY '<STRONG_PASSWORD>';
+GRANT ALL PRIVILEGES ON \`wp_%\`.* TO 'portal_admin'@'%';
+GRANT CREATE, DROP, ALTER ON *.* TO 'portal_admin'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.user TO 'portal_admin'@'%';
+CREATE DATABASE blog_management CHARACTER SET utf8mb4;
+GRANT ALL PRIVILEGES ON blog_management.* TO 'portal_admin'@'%';
+FLUSH PRIVILEGES;
+EOF
+
+# Mailserver MariaDB用 portal_admin作成
+docker exec mailserver-mariadb-1 mysql -u root -p<PASSWORD> <<EOF
+CREATE USER 'portal_admin'@'%' IDENTIFIED BY '<STRONG_PASSWORD>';
+GRANT ALL PRIVILEGES ON \`mailserver_%\`.* TO 'portal_admin'@'%';
+GRANT CREATE, DROP, ALTER ON *.* TO 'portal_admin'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.user TO 'portal_admin'@'%';
+FLUSH PRIVILEGES;
+EOF
+```
+
+**検証**:
+- portal_admin でログイン成功
+- wp_% データベースへのアクセス確認
+- mailserver_% データベースへのアクセス確認
+
+**依存**: なし
+
+---
+
+#### L-010: 暗号化キー生成＆.env設定
+**実行場所**: 🖥️ ローカル
+**所要時間**: 15分
+
+**コマンド**:
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/unified-portal/backend
+
+# Fernet暗号化キー生成
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# .env に追加
+cat >> .env <<EOF
+# Blog Database
+BLOG_DB_HOST=172.20.0.30
+BLOG_DB_PORT=3306
+BLOG_DB_NAME=blog_management
+BLOG_DB_USER=portal_admin
+BLOG_DB_PASSWORD=<portal_admin_password>
+
+# Encryption
+ENCRYPTION_KEY=<generated_fernet_key>
+
+# Email
+SMTP_HOST=localhost
+SMTP_PORT=587
+SMTP_USER=noreply@kuma8088.com
+SMTP_PASSWORD=<smtp_password>
+SMTP_FROM_NAME=Unified Portal
+EOF
+```
+
+**検証**:
+- .env に全項目追加確認
+- ENCRYPTION_KEY が正しいフォーマット（32バイト base64）
+
+**依存**: なし
+
+---
+
+#### L-011: マイグレーションSQL実行
+**実行場所**: 🖥️ ローカル
+**所要時間**: 10分
+
+**コマンド**:
+```bash
+cd /opt/onprem-infra-system/project-root-infra/services/unified-portal/backend
+
+# Blog DB（admin_users, password_reset_tokens, wordpress_sites, db_credentials）
+docker exec -i blog-mariadb-1 mysql -u portal_admin -p<PASSWORD> blog_management < migrations/001_add_admin_tables.sql
+docker exec -i blog-mariadb-1 mysql -u portal_admin -p<PASSWORD> blog_management < migrations/002_add_wordpress_sites.sql
+
+# 確認
+docker exec blog-mariadb-1 mysql -u portal_admin -p<PASSWORD> -e "SHOW TABLES FROM blog_management;"
+```
+
+**検証**:
+- admin_users, password_reset_tokens, wordpress_sites, db_credentials テーブル作成確認
+- DESCRIBE で各テーブルスキーマ確認
+
+**依存**: L-009, L-010, W-041 ~ W-042（マイグレーションファイル生成）
 
 ---
 

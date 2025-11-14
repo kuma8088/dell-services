@@ -224,20 +224,145 @@
 **機能ID**: `WP-001`
 
 **要件**:
-- サイト一覧（16サイト）
-- 新規サイト作成ウィザード（既存スクリプト統合）
-- プラグイン/テーマ管理
+- サイト一覧表示（16サイト、ドメイン・DB・PHPバージョン表示）
+- **新規サイト作成ウィザード**:
+  - サイト名・ドメイン入力
+  - **データベース選択**:
+    - Option 1: 自動作成（wp_<site_name>）
+    - Option 2: 既存DB選択（Database管理で事前作成）
+  - **PHPバージョン選択**（7.4, 8.0, 8.1, 8.2）
+  - WordPress自動インストール
+  - WP Mail SMTP自動設定
+- **サイト設定編集**:
+  - ドメイン変更
+  - **PHPバージョン切り替え**（ドロップダウン選択）
+  - データベース変更（切り替え）
+  - 有効/無効切替
+- プラグイン/テーマ管理（wp-cli経由）
 - WP Mail SMTP一括設定
+- バックアップ/リストア
 
-#### 2.3.4 Database Management
+**データ項目**（wordpress_sites テーブル）:
+| 項目 | 型 | 必須 | 説明 |
+|------|-----|------|------|
+| id | integer | ✓ | サイトID |
+| site_name | string | ✓ | サイト名（例: kuma8088） |
+| domain | string | ✓ | ドメイン名（例: kuma8088.com） |
+| database_name | string | ✓ | データベース名（例: wp_kuma8088） |
+| **php_version** | string | ✓ | PHPバージョン（例: 8.2） |
+| enabled | boolean | ✓ | 有効/無効フラグ |
+| created_at | datetime | ✓ | 作成日時 |
+| updated_at | datetime | ✓ | 更新日時 |
+
+**PHPバージョン切り替え仕様**:
+- サポートバージョン: 7.4, 8.0, 8.1, 8.2
+- 変更時の動作:
+  1. wordpress_sites.php_versionを更新
+  2. Nginx設定ファイル自動生成（fastcgi_pass変更）
+  3. nginx -s reload実行（ダウンタイムなし）
+  4. 監査ログ記録
+- バリデーション: 選択したPHPバージョンのコンテナが起動していること
+
+#### 2.3.4 Database Management（汎用DB管理ツール）
 **機能ID**: `DB-001`
 
 **要件**:
-- データベース一覧（サイズ、テーブル数）
-- ユーザー管理（作成、削除、権限変更）
-- クエリ実行（読み取り専用、制限付き）
+- **複数データベース対応**:
+  - Blog用MariaDB（172.20.0.30:3306、16個のWordPress DB）
+  - Mailserver用MariaDB（172.20.0.60:3306、mailserver_usermgmt）
+- **データベース一覧表示**:
+  - DB名、サイズ、テーブル数、文字セット
+  - 接続先（Blog/Mailserver）別タブ表示
+  - 検索・フィルタ機能
+- **新規データベース作成**:
+  - DB名入力（バリデーション: 英数字_のみ）
+  - 文字セット選択（utf8mb4推奨）
+  - 接続先選択（Blog/Mailserver）
+  - 自動でDBユーザー作成（DB名と同じユーザー名）
+- **データベース削除**:
+  - 確認ダイアログ（DB名入力必須）
+  - 関連DBユーザーも削除
+  - WordPress使用中の場合は警告
+- **データベースユーザー管理**:
+  - ユーザー一覧（ユーザー名、ホスト、権限）
+  - 新規ユーザー作成
+  - パスワード変更
+  - 権限変更（SELECT, INSERT, UPDATE, DELETE等）
+  - ユーザー削除
+- **SQLクエリ実行**（制限付き）:
+  - SELECT文のみ許可（デフォルト）
+  - INSERT/UPDATE/DELETE: Super Adminのみ
+  - DROP/ALTER: 実行不可（安全性）
+  - クエリ履歴表示
+  - 結果をCSVエクスポート
 
-#### 2.3.5 Backup Management
+**データベース認証**:
+- **専用管理ユーザー**: `portal_admin`（Blog用・Mailserver用それぞれ作成）
+- 権限:
+  ```sql
+  GRANT ALL PRIVILEGES ON `wp_%`.* TO 'portal_admin'@'%';
+  GRANT ALL PRIVILEGES ON `mailserver_%`.* TO 'portal_admin'@'%';
+  GRANT CREATE, DROP, ALTER ON *.* TO 'portal_admin'@'%';
+  GRANT SELECT, INSERT, UPDATE, DELETE ON mysql.user TO 'portal_admin'@'%';
+  ```
+- パスワード: **暗号化して保存**（Fernet対称暗号化、.envに保存）
+
+**セキュリティ要件**:
+- rootユーザーは使用しない
+- 危険なクエリはブロック（DROP DATABASE, TRUNCATE等）
+- クエリタイムアウト: 30秒
+- 1クエリあたりの最大行数: 1000行
+
+#### 2.3.5 PHP Management
+**機能ID**: `PHP-001`
+
+**要件**:
+- **PHPバージョン管理**:
+  - インストール済みバージョン一覧（7.4, 8.0, 8.1, 8.2）
+  - 各バージョンの使用サイト数表示
+  - **新しいバージョン追加**:
+    - docker-compose.ymlにphp-fpmサービス追加
+    - Docker imageビルド
+    - コンテナ起動
+  - **未使用バージョン削除**:
+    - 使用サイト数が0の場合のみ削除可能
+    - コンテナ停止・削除
+- **バージョン別設定**:
+  - php.ini表示・編集（バージョン別）
+  - PHP-FPM設定表示・編集（pm.max_children等）
+  - 拡張モジュール一覧
+  - エラーログ表示（バージョン別）
+- **サイト別使用状況**:
+  - サイト名、ドメイン、PHPバージョンの一覧表示
+  - バージョン別グループ表示
+  - 一括バージョン変更（複数サイト選択）
+
+**技術構成**（PHP-FPM複数バージョン）:
+```yaml
+services:
+  php74-fpm:
+    image: wordpress:php7.4-fpm
+    volumes:
+      - ./wordpress:/var/www/html
+  php80-fpm:
+    image: wordpress:php8.0-fpm
+    volumes:
+      - ./wordpress:/var/www/html
+  php81-fpm:
+    image: wordpress:php8.1-fpm
+    volumes:
+      - ./wordpress:/var/www/html
+  php82-fpm:
+    image: wordpress:php8.2-fpm
+    volumes:
+      - ./wordpress:/var/www/html
+```
+
+**Nginx設定自動生成**:
+- サイトごとに`fastcgi_pass`を動的変更
+- 例: PHP 8.2使用 → `fastcgi_pass php82-fpm:9000;`
+
+#### 2.3.6 Backup Management
 **機能ID**: `BACKUP-001`
 
 **要件**:
@@ -256,12 +381,21 @@
 - 同時接続数: 10ユーザー対応（現状は管理者1名のみ）
 
 ### 3.2 セキュリティ
-- 認証: JWT（HS256、有効期限15分）
-- 通信: HTTPS必須（Cloudflare Tunnel経由）
-- CORS: フロントエンドドメインのみ許可
-- SQLインジェクション対策: Parameterized Query徹底
-- XSS対策: 入力値サニタイズ、Content-Security-Policy
-- CSRF対策: JWTベーストークン
+- **認証**: JWT（HS256、有効期限15分）
+- **通信**: HTTPS必須（Cloudflare Tunnel経由）
+- **CORS**: フロントエンドドメインのみ許可
+- **SQLインジェクション対策**: Parameterized Query徹底
+- **XSS対策**: 入力値サニタイズ、Content-Security-Policy
+- **CSRF対策**: JWTベーストークン
+- **パスワード暗号化**:
+  - **メールユーザーパスワード**: SHA512-CRYPT（Dovecot互換）
+  - **管理者パスワード**: bcrypt（rounds=12）
+  - **データベース接続パスワード**: Fernet対称暗号化
+    - 暗号化キー: 環境変数`ENCRYPTION_KEY`（32バイト、base64エンコード）
+    - ライブラリ: `cryptography.fernet`
+    - 保存場所: `.env`ファイル（暗号化済み）
+    - 復号化: アプリケーション起動時のみ
+  - **パスワードリセットトークン**: SHA256ハッシュ化
 
 ### 3.3 可用性
 - 目標稼働率: 99.9%（月間ダウンタイム < 43分）
@@ -288,9 +422,11 @@
 - **言語**: Python 3.9+
 - **フレームワーク**: FastAPI 0.104+
 - **ORM**: SQLAlchemy 2.0+
-- **データベース**: MariaDB 10.6+（既存共有）
+- **データベース**: MariaDB 10.6+（複数接続：Blog + Mailserver）
 - **認証**: python-jose（JWT）、passlib（パスワードハッシュ）
 - **バリデーション**: Pydantic 2.0+
+- **暗号化**: cryptography.fernet（DB接続パスワード暗号化）
+- **メール送信**: smtplib（Mailserver経由）
 
 ### 4.2 フロントエンド
 - **言語**: TypeScript 5.0+
