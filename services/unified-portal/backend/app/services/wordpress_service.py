@@ -106,12 +106,13 @@ class WordPressService:
         )
 
         try:
-            # Save to database
+            # Add to session but DO NOT commit yet
+            # We'll commit only after nginx operations succeed
             self.db.add(site)
-            self.db.commit()
-            self.db.refresh(site)
+            self.db.flush()  # Flush to get ID without committing
 
             # Generate Nginx configuration
+            # This may raise an exception if configuration is invalid
             config_path = self.nginx.create_wordpress_site_config(
                 site_name=site_data.site_name,
                 domain=site_data.domain,
@@ -121,14 +122,27 @@ class WordPressService:
             logger.info(f"Created Nginx config: {config_path}")
 
             # Reload Nginx
+            # This may fail if nginx test fails
             if not self.nginx.reload():
-                logger.warning("Nginx reload failed, manual intervention may be required")
+                raise ValueError("Nginx reload failed")
+
+            # All external operations succeeded - NOW commit to database
+            self.db.commit()
+            self.db.refresh(site)
 
             logger.info(f"WordPress site created: {site_data.site_name}")
             return site
 
         except Exception as e:
+            # Rollback is now effective because we haven't committed yet
             self.db.rollback()
+
+            # Clean up nginx config if it was created
+            try:
+                self.nginx.delete_config(f"{site_data.site_name}.conf")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup nginx config: {cleanup_error}")
+
             logger.error(f"Failed to create WordPress site: {e}")
             raise ValueError(f"Failed to create WordPress site: {e}")
 
