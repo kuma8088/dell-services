@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tantml:react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Trash2,
   Settings,
@@ -110,7 +110,7 @@ export default function ManagedSitesList({ searchQuery }: ManagedSitesListProps)
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          管理サイト一覧の取得に失敗しました: {error.message}
+          管理サイト一覧の取得に失敗しました: {error instanceof Error ? error.message : '不明なエラー'}
         </AlertDescription>
       </Alert>
     )
