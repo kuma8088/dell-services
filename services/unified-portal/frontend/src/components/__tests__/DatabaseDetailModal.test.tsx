@@ -144,8 +144,9 @@ describe('DatabaseDetailModal', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText(/データベース詳細の取得に失敗しました/)).toBeInTheDocument()
-      expect(screen.getByText(errorMessage)).toBeInTheDocument()
+      // Error message is combined in one alert description
+      expect(screen.getByText(/データベース詳細の取得に失敗しました:/)).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(errorMessage))).toBeInTheDocument()
     })
   })
 
