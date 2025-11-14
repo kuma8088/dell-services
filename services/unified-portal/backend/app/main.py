@@ -28,9 +28,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
 
-    # Create database tables (temporarily disabled for Dashboard API testing)
-    # Base.metadata.create_all(bind=engine)
-    # logger.info("Database tables created")
+    # Create database tables
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created")
 
     yield
 

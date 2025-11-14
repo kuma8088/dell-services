@@ -27,6 +27,18 @@ class Settings(BaseSettings):
 
     # Database - Mailserver User Management
     mailserver_database_url: str = "mysql+pymysql://usermgmt:password@172.20.0.60:3306/mailserver_usermgmt"
+    mailserver_db_host: str = "172.20.0.60"
+    mailserver_db_port: int = 3306
+
+    # Database - Blog System (MariaDB for WordPress)
+    blog_database_url: str = "mysql+pymysql://root:password@blog-mariadb:3306/mysql"
+    blog_db_host: str = "blog-mariadb"
+    blog_db_port: int = 3306
+    blog_db_user: str = "root"
+    blog_db_password: str = "password"
+
+    # Encryption (Fernet symmetric encryption for database credentials)
+    encryption_key: str = "change-this-to-a-valid-fernet-key-in-production"
 
     # JWT
     jwt_secret_key: str = "change-this-secret-key-in-production"
@@ -50,6 +62,16 @@ class Settings(BaseSettings):
 
     # Cloudflare API
     cloudflare_api_token: str = ""
+
+    # SMTP Email Settings (for password reset, welcome emails, etc.)
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@example.com"
+
+    # Frontend URL (for password reset links, etc.)
+    frontend_url: str = "http://localhost:5173"
 
     # Logging
     log_level: str = "INFO"

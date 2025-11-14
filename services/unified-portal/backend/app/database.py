@@ -72,3 +72,37 @@ def get_mailserver_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+# ============================================================================
+# Blog System Database (MariaDB for WordPress databases)
+# ============================================================================
+
+# Create SQLAlchemy engine for blog database
+# This connects to the MariaDB instance that hosts WordPress databases
+blog_engine = create_engine(
+    settings.blog_database_url,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    echo=settings.debug,
+)
+
+# Create session factory for blog database
+BlogSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=blog_engine)
+
+
+def get_blog_db() -> Generator[Session, None, None]:
+    """Get blog database session.
+
+    Yields:
+        Session: SQLAlchemy database session for blog MariaDB instance.
+
+    Note:
+        This connection is used for managing WordPress databases (CREATE/DROP DATABASE,
+        CREATE/DROP USER, GRANT privileges, etc.), not for querying WordPress tables.
+    """
+    db = BlogSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
