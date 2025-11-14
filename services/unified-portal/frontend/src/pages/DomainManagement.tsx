@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Globe, Plus, RefreshCw, Trash2, Mail, Lock, CheckCircle, AlertCircle } from 'lucide-react'
+import { Globe, Plus, RefreshCw, Trash2, Mail, Lock, CheckCircle, AlertCircle, ExternalLink, Edit } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -13,9 +13,12 @@ import {
   listZones,
   getDNSRecords,
   createDNSRecord,
+  updateDNSRecord,
   deleteDNSRecord,
   type Zone,
+  type DNSRecord,
   type DNSRecordCreate,
+  type DNSRecordUpdate,
 } from '@/lib/domains-api'
 
 // Extended domain interface with metadata
@@ -29,6 +32,8 @@ interface DomainMetadata extends Zone {
 
 export default function DomainManagement() {
   const [showDNSModal, setShowDNSModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingRecord, setEditingRecord] = useState<DNSRecord | null>(null)
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'dns' | 'mail' | 'wordpress'>('overview')
   const [dnsFormData, setDnsFormData] = useState<Partial<DNSRecordCreate>>({
@@ -36,6 +41,7 @@ export default function DomainManagement() {
     ttl: 1,
     proxied: false,
   })
+  const [editFormData, setEditFormData] = useState<DNSRecordUpdate>({})
   const [error, setError] = useState<string | null>(null)
 
   const queryClient = useQueryClient()
@@ -65,6 +71,22 @@ export default function DomainManagement() {
     },
     onError: (err: any) => {
       setError(err.response?.data?.detail || 'Failed to create DNS record')
+    },
+  })
+
+  // Update DNS record mutation
+  const updateRecordMutation = useMutation({
+    mutationFn: ({ domain, recordId, record }: { domain: string; recordId: string; record: DNSRecordUpdate }) =>
+      updateDNSRecord(domain, recordId, record),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dns-records', selectedDomain] })
+      setShowEditModal(false)
+      setEditingRecord(null)
+      setEditFormData({})
+      setError(null)
+    },
+    onError: (err: any) => {
+      setError(err.response?.data?.detail || 'Failed to update DNS record')
     },
   })
 
@@ -99,6 +121,28 @@ export default function DomainManagement() {
     createRecordMutation.mutate({
       domain: selectedDomain,
       record: dnsFormData as DNSRecordCreate,
+    })
+  }
+
+  const handleEditDNSRecord = (record: DNSRecord) => {
+    setEditingRecord(record)
+    setEditFormData({
+      content: record.content,
+      ttl: record.ttl,
+      proxied: record.proxied,
+      priority: record.priority,
+    })
+    setShowEditModal(true)
+    setError(null)
+  }
+
+  const handleUpdateDNSRecord = () => {
+    if (!selectedDomain || !editingRecord) return
+
+    updateRecordMutation.mutate({
+      domain: selectedDomain,
+      recordId: editingRecord.id,
+      record: editFormData,
     })
   }
 
@@ -283,6 +327,18 @@ export default function DomainManagement() {
                       variant="outline"
                       onClick={(e) => {
                         e.stopPropagation()
+                        window.open(`https://dash.cloudflare.com/${domain.id}/dns`, '_blank')
+                      }}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Cloudflareで管理
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation()
                         setActiveTab('dns')
                       }}
                     >
@@ -333,10 +389,25 @@ export default function DomainManagement() {
                     Cloudflare DNSレコードの確認と編集
                   </CardDescription>
                 </div>
-                <Button size="sm" onClick={() => setShowDNSModal(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  レコード追加
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const zone = domains.find((d) => d.name === selectedDomain)
+                      if (zone) {
+                        window.open(`https://dash.cloudflare.com/${zone.id}/dns`, '_blank')
+                      }
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Cloudflareで管理
+                  </Button>
+                  <Button size="sm" onClick={() => setShowDNSModal(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    レコード追加
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {dnsLoading ? (
@@ -378,6 +449,14 @@ export default function DomainManagement() {
                             <td className="p-4">{record.ttl === 1 ? 'Auto' : record.ttl}</td>
                             <td className="p-4 text-right">
                               <div className="flex gap-2 justify-end">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditDNSRecord(record)}
+                                  disabled={updateRecordMutation.isPending}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -586,6 +665,124 @@ export default function DomainManagement() {
                   onClick={() => {
                     setShowDNSModal(false)
                     setDnsFormData({ type: 'A', ttl: 1, proxied: false })
+                    setError(null)
+                  }}
+                >
+                  キャンセル
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* DNS record edit modal */}
+      {showEditModal && editingRecord && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-2xl">
+            <CardHeader>
+              <CardTitle>DNSレコード編集: {editingRecord.name}</CardTitle>
+              <CardDescription>
+                DNSレコードの設定を変更します
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">レコードタイプ</label>
+                <input
+                  type="text"
+                  value={editingRecord.type}
+                  disabled
+                  className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm cursor-not-allowed"
+                />
+                <p className="text-xs text-muted-foreground">レコードタイプは変更できません</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">名前</label>
+                <input
+                  type="text"
+                  value={editingRecord.name}
+                  disabled
+                  className="flex h-10 w-full rounded-md border border-input bg-muted px-3 py-2 text-sm cursor-not-allowed font-mono"
+                />
+                <p className="text-xs text-muted-foreground">レコード名は変更できません</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">値 *</label>
+                <input
+                  type="text"
+                  placeholder={
+                    editingRecord.type === 'A'
+                      ? '例: 192.0.2.1'
+                      : editingRecord.type === 'CNAME'
+                      ? '例: example.com'
+                      : editingRecord.type === 'MX'
+                      ? '例: mail.example.com'
+                      : '値を入力'
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                  value={editFormData.content || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, content: e.target.value })}
+                />
+              </div>
+
+              {(editingRecord.type === 'MX' || editingRecord.priority !== undefined) && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">優先度</label>
+                  <input
+                    type="number"
+                    placeholder="例: 10"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={editFormData.priority ?? ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, priority: parseInt(e.target.value) || undefined })}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">TTL</label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={editFormData.ttl ?? editingRecord.ttl}
+                  onChange={(e) => setEditFormData({ ...editFormData, ttl: parseInt(e.target.value) })}
+                >
+                  <option value={1}>Auto</option>
+                  <option value={60}>1 min</option>
+                  <option value={300}>5 min</option>
+                  <option value={3600}>1 hour</option>
+                  <option value={86400}>1 day</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="proxied-edit"
+                  checked={editFormData.proxied ?? editingRecord.proxied}
+                  onChange={(e) => setEditFormData({ ...editFormData, proxied: e.target.checked })}
+                />
+                <label htmlFor="proxied-edit" className="text-sm">
+                  Cloudflareプロキシを有効化（オレンジクラウド）
+                </label>
+              </div>
+
+              <div className="flex gap-2 pt-4">
+                <Button
+                  className="flex-1"
+                  onClick={handleUpdateDNSRecord}
+                  disabled={updateRecordMutation.isPending}
+                >
+                  {updateRecordMutation.isPending ? '更新中...' : '更新'}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setEditingRecord(null)
+                    setEditFormData({})
                     setError(null)
                   }}
                 >
