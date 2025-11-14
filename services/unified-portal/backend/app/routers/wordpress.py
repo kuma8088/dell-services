@@ -1,12 +1,28 @@
 """
 WordPress management API endpoints.
+
+Provides two types of operations:
+1. Existing site management (17 sites from Phase A-1/A-2)
+2. New site lifecycle management (create/delete/update sites)
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import subprocess
 import json
+
+from app.auth import get_current_user
+from app.database import get_db
+from app.schemas.wordpress import (
+    WordPressSiteCacheControl,
+    WordPressSiteCreate,
+    WordPressSiteResponse,
+    WordPressSiteStats as WordPressSiteStatsSchema,
+    WordPressSiteUpdate,
+)
+from app.services.wordpress_service import get_wordpress_service
 
 
 router = APIRouter(prefix="/api/v1/wordpress", tags=["WordPress"])
@@ -385,3 +401,218 @@ async def get_wordpress_stats():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get WordPress stats: {str(e)}")
+
+
+# ============================================================================
+# Site Lifecycle Management Endpoints (New Site Creation/Deletion)
+# ============================================================================
+
+@router.get("/managed-sites", response_model=List[WordPressSiteResponse])
+def list_managed_wordpress_sites(
+    enabled_only: bool = False,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    List all managed WordPress sites from database.
+
+    This endpoint manages sites created through the Unified Portal,
+    separate from the 17 existing sites managed via wp-cli.
+
+    Args:
+        enabled_only: Only return enabled sites
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        List of managed WordPress sites
+    """
+    service = get_wordpress_service(db)
+    sites = service.list_sites(enabled_only=enabled_only)
+    return sites
+
+
+@router.get("/managed-sites/{site_id}", response_model=WordPressSiteResponse)
+def get_managed_wordpress_site(
+    site_id: int,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Get managed WordPress site by ID.
+
+    Args:
+        site_id: Site ID
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        WordPress site details
+
+    Raises:
+        HTTPException: If site not found
+    """
+    service = get_wordpress_service(db)
+    site = service.get_site(site_id)
+
+    if not site:
+        raise HTTPException(status_code=404, detail=f"Site with ID {site_id} not found")
+
+    return site
+
+
+@router.post("/managed-sites", response_model=WordPressSiteResponse, status_code=201)
+def create_managed_wordpress_site(
+    site_data: WordPressSiteCreate,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Create a new WordPress site.
+
+    Steps:
+    1. Validate site data
+    2. Create database record
+    3. Generate Nginx configuration
+    4. Reload Nginx
+
+    Args:
+        site_data: Site creation data
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        Created WordPress site
+
+    Raises:
+        HTTPException: If site creation fails
+    """
+    service = get_wordpress_service(db)
+
+    try:
+        site = service.create_site(site_data)
+        return site
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/managed-sites/{site_id}", response_model=WordPressSiteResponse)
+def update_managed_wordpress_site(
+    site_id: int,
+    site_update: WordPressSiteUpdate,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Update managed WordPress site configuration.
+
+    Args:
+        site_id: Site ID
+        site_update: Site update data
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        Updated WordPress site
+
+    Raises:
+        HTTPException: If site not found or update fails
+    """
+    service = get_wordpress_service(db)
+
+    try:
+        site = service.update_site(site_id, site_update)
+        return site
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/managed-sites/{site_id}", status_code=204)
+def delete_managed_wordpress_site(
+    site_id: int,
+    delete_database: bool = False,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Delete managed WordPress site.
+
+    Args:
+        site_id: Site ID
+        delete_database: Also delete the database
+        db: Database session
+        current_user: Current authenticated user
+
+    Raises:
+        HTTPException: If site not found or deletion fails
+    """
+    service = get_wordpress_service(db)
+
+    try:
+        service.delete_site(site_id, delete_database=delete_database)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/managed-sites/{site_id}/stats", response_model=WordPressSiteStatsSchema)
+def get_managed_site_stats(
+    site_id: int,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Get managed WordPress site statistics.
+
+    Args:
+        site_id: Site ID
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        Site statistics (posts, pages, plugins, themes, users, db size)
+
+    Raises:
+        HTTPException: If site not found
+    """
+    service = get_wordpress_service(db)
+    stats = service.get_site_stats(site_id)
+
+    if not stats:
+        raise HTTPException(status_code=404, detail=f"Site with ID {site_id} not found")
+
+    return stats
+
+
+@router.post("/managed-sites/{site_id}/cache/clear", status_code=200)
+def clear_managed_site_cache(
+    site_id: int,
+    cache_control: WordPressSiteCacheControl,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user),
+):
+    """
+    Clear managed WordPress site cache.
+
+    Args:
+        site_id: Site ID
+        cache_control: Cache control options
+        db: Database session
+        current_user: Current authenticated user
+
+    Returns:
+        Success status
+
+    Raises:
+        HTTPException: If site not found or cache clear fails
+    """
+    service = get_wordpress_service(db)
+
+    try:
+        success = service.clear_cache(site_id, cache_type=cache_control.cache_type)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to clear cache")
+
+        return {"success": True, "message": f"{cache_control.cache_type} cache cleared"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
