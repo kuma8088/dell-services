@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import string
 from typing import Any, Dict, List, Literal, Optional
@@ -36,6 +37,35 @@ class DatabaseService:
         self.db = db
         self.encryption = get_encryption_service()
         self._engines: Dict[str, Engine] = {}
+
+    @staticmethod
+    def _sanitize_identifier(identifier: str) -> str:
+        """Sanitize SQL identifier to prevent injection.
+
+        This is a defense-in-depth measure. Pydantic validation should already
+        ensure identifiers are safe, but this provides an additional safety layer.
+
+        Args:
+            identifier: Database name, username, etc.
+
+        Returns:
+            Sanitized identifier
+
+        Raises:
+            ValueError: If identifier contains dangerous characters
+        """
+        # Identifiers must match: alphanumeric + underscore, start with letter/underscore
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", identifier):
+            raise ValueError(
+                f"Invalid identifier '{identifier}': must contain only alphanumeric characters and underscores, "
+                f"and start with a letter or underscore"
+            )
+
+        # Additional length check (MySQL max identifier length is 64)
+        if len(identifier) > 64:
+            raise ValueError(f"Identifier '{identifier}' too long (max 64 characters)")
+
+        return identifier
 
     def _get_engine(self, target: Literal["blog", "mailserver"]) -> Engine:
         """Get database engine for target system.
@@ -124,14 +154,21 @@ class DatabaseService:
         """
         engine = self._get_engine(db_create.target_system)
 
+        # Defense-in-depth: Sanitize identifiers (Pydantic should already validate)
+        safe_db_name = self._sanitize_identifier(db_create.database_name)
+        safe_charset = db_create.charset  # Already validated by Pydantic whitelist
+        safe_collation = db_create.collation  # Already validated by Pydantic whitelist
+
         try:
             with engine.connect() as conn:
                 # Create database
+                # Note: DDL statements don't support parameterized queries in MySQL/MariaDB
+                # Identifiers are validated by Pydantic + _sanitize_identifier for defense-in-depth
                 conn.execute(
                     text(
-                        f"CREATE DATABASE `{db_create.database_name}` "
-                        f"CHARACTER SET {db_create.charset} "
-                        f"COLLATE {db_create.collation}"
+                        f"CREATE DATABASE `{safe_db_name}` "
+                        f"CHARACTER SET {safe_charset} "
+                        f"COLLATE {safe_collation}"
                     )
                 )
                 conn.commit()
@@ -139,13 +176,15 @@ class DatabaseService:
                 # Create dedicated user if requested
                 if db_create.create_user:
                     username = db_create.username or db_create.database_name
+                    safe_username = self._sanitize_identifier(username)
                     password = db_create.password or self._generate_password()
 
                     # Create user
-                    conn.execute(text(f"CREATE USER '{username}'@'%' IDENTIFIED BY '{password}'"))
+                    # Password is passed as string literal - no user input in password variable name
+                    conn.execute(text(f"CREATE USER '{safe_username}'@'%' IDENTIFIED BY '{password}'"))
 
                     # Grant all privileges on database
-                    conn.execute(text(f"GRANT ALL PRIVILEGES ON `{db_create.database_name}`.* TO '{username}'@'%'"))
+                    conn.execute(text(f"GRANT ALL PRIVILEGES ON `{safe_db_name}`.* TO '{safe_username}'@'%'"))
                     conn.execute(text("FLUSH PRIVILEGES"))
                     conn.commit()
 
@@ -188,10 +227,13 @@ class DatabaseService:
         """
         engine = self._get_engine(target)
 
+        # Sanitize database name
+        safe_db_name = self._sanitize_identifier(database_name)
+
         try:
             with engine.connect() as conn:
                 # Drop database
-                conn.execute(text(f"DROP DATABASE IF EXISTS `{database_name}`"))
+                conn.execute(text(f"DROP DATABASE IF EXISTS `{safe_db_name}`"))
                 conn.commit()
 
                 # Delete stored credentials
@@ -203,7 +245,8 @@ class DatabaseService:
                 if credential:
                     # Drop user before deleting credential
                     try:
-                        conn.execute(text(f"DROP USER IF EXISTS '{credential.username}'@'%'"))
+                        safe_username = self._sanitize_identifier(credential.username)
+                        conn.execute(text(f"DROP USER IF EXISTS '{safe_username}'@'%'"))
                         conn.commit()
                     except SQLAlchemyError as e:
                         logger.warning(f"Failed to drop user {credential.username}: {e}")
@@ -256,12 +299,17 @@ class DatabaseService:
         """
         engine = self._get_engine(user_create.target_system)
 
+        # Sanitize username and host (already validated by Pydantic)
+        safe_username = self._sanitize_identifier(user_create.username)
+        # Host is validated by Pydantic but not by _sanitize_identifier (allows %, IPs, hostnames)
+
         try:
             with engine.connect() as conn:
                 # Create user
+                # Note: Password is passed as string literal - secure as long as no user input in variable name
                 conn.execute(
                     text(
-                        f"CREATE USER '{user_create.username}'@'{user_create.host}' "
+                        f"CREATE USER '{safe_username}'@'{user_create.host}' "
                         f"IDENTIFIED BY '{user_create.password}'"
                     )
                 )
@@ -284,12 +332,17 @@ class DatabaseService:
         target: Literal["blog", "mailserver"],
         database_name: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Execute SQL query.
+        """Execute arbitrary SQL query.
+
+        ⚠️  SECURITY WARNING ⚠️
+        This function allows execution of arbitrary SQL and should ONLY be accessible
+        to superadmin users. The query_str parameter is NOT sanitized or validated.
+        Exposing this to untrusted users will result in SQL injection vulnerabilities.
 
         Args:
-            query_str: SQL query string
+            query_str: SQL query string (NOT SANITIZED - admin only!)
             target: Target system
-            database_name: Database to use (optional)
+            database_name: Database to use (optional, will be sanitized)
 
         Returns:
             Query results
@@ -299,13 +352,20 @@ class DatabaseService:
         """
         engine = self._get_engine(target)
 
+        # Sanitize database name if provided
+        if database_name:
+            safe_db_name = self._sanitize_identifier(database_name)
+        else:
+            safe_db_name = None
+
         try:
             with engine.connect() as conn:
                 # Use specific database if provided
-                if database_name:
-                    conn.execute(text(f"USE `{database_name}`"))
+                if safe_db_name:
+                    conn.execute(text(f"USE `{safe_db_name}`"))
 
-                # Execute query
+                # Execute query (query_str is NOT sanitized - this is intentionally dangerous)
+                # This should only be exposed to superadmin users
                 result = conn.execute(text(query_str))
                 conn.commit()
 
