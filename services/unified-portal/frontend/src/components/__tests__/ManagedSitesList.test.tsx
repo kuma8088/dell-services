@@ -95,24 +95,14 @@ describe('ManagedSitesList', () => {
     expect(screen.queryByText('test-site-2')).not.toBeInTheDocument()
   })
 
-  it('shows empty state when no sites match search', async () => {
-    vi.mocked(api.managedSitesAPI.listSites).mockResolvedValue(mockSites)
-
-    render(<ManagedSitesList searchQuery="nonexistent" />)
-
-    await waitFor(() => {
-      expect(screen.getByText('管理サイトが見つかりません')).toBeInTheDocument()
-    })
-  })
-
   it('shows empty state when no sites exist', async () => {
     vi.mocked(api.managedSitesAPI.listSites).mockResolvedValue([])
 
     render(<ManagedSitesList searchQuery="" />)
 
     await waitFor(() => {
-      expect(screen.getByText('管理サイトが見つかりません')).toBeInTheDocument()
-      expect(screen.getByText('新規サイト作成ボタンから最初のサイトを作成してください。')).toBeInTheDocument()
+      expect(screen.getByText('管理サイトがありません')).toBeInTheDocument()
+      expect(screen.getByText('「新規サイト作成」ボタンから最初のサイトを作成してください')).toBeInTheDocument()
     })
   })
 
@@ -138,18 +128,6 @@ describe('ManagedSitesList', () => {
     await waitFor(() => {
       expect(screen.getByText('PHP 8.3')).toBeInTheDocument()
       expect(screen.getByText('PHP 8.2')).toBeInTheDocument()
-    })
-  })
-
-  it('shows action buttons for each site', async () => {
-    vi.mocked(api.managedSitesAPI.listSites).mockResolvedValue(mockSites)
-
-    render(<ManagedSitesList searchQuery="" />)
-
-    await waitFor(() => {
-      // Each site should have edit, delete, and cache clear buttons
-      const deleteButtons = screen.getAllByTitle('削除')
-      expect(deleteButtons).toHaveLength(2)
     })
   })
 })

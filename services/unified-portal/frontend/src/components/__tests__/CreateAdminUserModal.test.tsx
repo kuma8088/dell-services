@@ -216,7 +216,7 @@ describe('CreateAdminUserModal', () => {
     await user.type(screen.getByLabelText('パスワード'), 'Password123')
     await user.type(screen.getByLabelText('パスワード確認'), 'Password123')
 
-    const createButton = screen.getByRole('button', { name: '作成' })
+    const createButton = screen.getByRole('button', { name: 'ユーザーを作成' })
     expect(createButton).not.toBeDisabled()
   })
 })
