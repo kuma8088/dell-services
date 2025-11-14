@@ -100,7 +100,7 @@ docker ps | grep unified-portal-backend
 
 # Nginx → Backend接続確認
 cd /opt/onprem-infra-system/project-root-infra/services/blog
-docker compose exec nginx curl -s http://172.20.0.92:8000/health
+docker compose exec nginx curl -s http://172.22.0.92:8000/health
 ```
 
 ### 404 Not Found エラー
@@ -142,9 +142,10 @@ Internet
   ↓ HTTPS
 Cloudflare Edge
   ↓ Cloudflare Tunnel (blog-tunnel)
-Blog Nginx (172.22.0.50:80)
+Blog Nginx (172.22.0.20:80)
   ↓ Proxy to admin.kuma8088.com virtual host
-Unified Portal Backend (172.20.0.92:8000) OR Frontend (172.20.0.91:80)
+  ├─ /api/* → Unified Portal Backend (172.22.0.92:8000)
+  └─ /* → Unified Portal Frontend (172.20.0.91:80)
 ```
 
 ## ✅ 設定完了チェックリスト
