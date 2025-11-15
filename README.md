@@ -16,9 +16,11 @@
 
 ### 🎯 目的
 
-**Mailserver**: Xserver WEBメール相当の機能を持つメールサーバーを、オンプレミス環境（Dell WorkStation）とAWS EC2を組み合わせたハイブリッドクラウド構成で構築。実運用を想定したセキュリティ、バックアップ、監視、復旧手順を完備。
+**Mailserver**: Xserver WEBメール相当の機能を持つメールサーバーを、オンプレミス環境（Dell WorkStation）とCloudflareを組み合わせたハイブリッドクラウド構成で構築。実運用を想定したセキュリティ、バックアップ、監視、復旧手順を完備。EC2 MX Gateway廃止により月額¥525削減（2025-11-12）。
 
-**Blog System**: Xserver上の16 WordPressサイト（95GB）をDell WorkStation + Cloudflare Tunnelへ移植。コスト削減とデータ主権確保を実現。
+**Blog System**: Xserver上の16 WordPressサイト（95GB）をDell WorkStation + Cloudflare Tunnelへ移植。コスト削減とデータ主権確保を実現。本番ドメイン移行完了（Phase A-2、2025-11-12）。
+
+**Unified Portal**: Blog SystemとMailserverを統一管理するXserver風Webポータル。Cloudflare DNS API統合、Redis Object Cache統合完了（Phase 1実装中、2025-11-13）。
 
 ### 🏗️ アーキテクチャ概要
 
@@ -33,7 +35,7 @@
 │ Cloudflare Edge    │           │  Cloudflare Edge   │
 │ - Email Routing    │           │  - SSL/TLS Auto    │
 │ - Email Worker     │           │  - DDoS Protection │
-│   (Serverless)     │           │  - CDN             │
+│   (Serverless JS)  │           │  - CDN             │
 └─────────┬──────────┘           └─────────┬──────────┘
           │ HTTPS POST                     │ Tunnel (outbound only)
           │ (via Tunnel)                   │
@@ -51,19 +53,28 @@
 │   │  │  ClamAV  │  │  Rspamd  │  │Roundcube │          │       │
 │   │  └──────────┘  └──────────┘  └──────────┘          │       │
 │   │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
-│   │  │UserMgmt  │  │  Nginx   │  │ Mail API │          │       │
-│   │  │          │  │          │  │(FastAPI) │          │       │
+│   │  │UserMgmt  │  │  Nginx   │  │ Mail API │←─ ✅ Email Worker  │
+│   │  │ (Flask)  │  │          │  │(FastAPI) │   転送先   │       │
 │   │  └──────────┘  └──────────┘  └──────────┘          │       │
 │   └────────────────────────────────────────────────────┘       │
 │                                                                    │
-│   ┌─── Blog System (4 Containers) ───────────────────────┐       │
+│   ┌─── Blog System (5 Containers) ───────────────────────┐       │
 │   │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
 │   │  │WordPress │  │  Nginx   │  │ MariaDB  │          │       │
 │   │  │ (PHP-FPM)│  │ (Proxy)  │  │ (16 DBs) │          │       │
 │   │  └──────────┘  └──────────┘  └──────────┘          │       │
-│   │  ┌──────────┐                                        │       │
-│   │  │cloudflared│ ←────────────────────────────────────┘       │
-│   │  └──────────┘  (16 WordPress Sites via 5 Domains)   │       │
+│   │  ┌──────────┐  ┌──────────┐                        │       │
+│   │  │cloudflared│  │  Redis   │ ←─ ✅ Object Cache    │       │
+│   │  └──────────┘  └──────────┘                        │       │
+│   │  (16 WordPress Sites via 5 Domains)                │       │
+│   └────────────────────────────────────────────────────┘       │
+│                                                                    │
+│   ┌─── Unified Portal (Dev) ─────────────────────────────┐       │
+│   │  ┌──────────┐  ┌──────────┐                        │       │
+│   │  │ FastAPI  │  │  React   │ ←─ 🔄 Phase 1実装中    │       │
+│   │  │(Backend) │  │(Frontend)│   (Xserver風UI)       │       │
+│   │  └──────────┘  └──────────┘                        │       │
+│   │  (Cloudflare DNS API統合完了 ✅)                   │       │
 │   └────────────────────────────────────────────────────┘       │
 │                                                                    │
 │   Storage: SSD 50GB (DBs/Logs) + HDD 3.6TB (Mail/Blog/Backups)  │
@@ -77,6 +88,11 @@
    │  - Blog (予定)     │                  │  - Versioning      │
    │  - Daily/Weekly    │                  │  - CloudWatch      │
    └────────────────────┘                  └────────────────────┘
+
+**注記**:
+- ✅ EC2 MX Gateway: 廃止済み（2025-11-12）
+- ✅ Tailscale VPN: 不要に（Cloudflare Tunnel経由で通信）
+- ✅ Email Worker: サーバーレス化により月額¥525→¥0削減
 ```
 
 ---
@@ -90,9 +106,9 @@
 | **Rocky Linux** | 9.6 | ホストOS（RHEL互換） |
 | **Docker** | 24.x | コンテナ実行基盤 |
 | **Docker Compose** | 2.x | マルチコンテナオーケストレーション |
-| **Terraform** | 1.x | IaC (AWS S3, IAM, CloudWatch, EC2) |
+| **Terraform** | 1.x | IaC (AWS S3, IAM, CloudWatch) |
 | **KVM/QEMU** | 9.0 | 仮想化基盤（構築済み、将来使用） |
-| **Tailscale** | Latest | VPNネットワーク（EC2 ⇄ Dell） |
+| **Tailscale** | - | ❌ **廃止済み**（2025-11-12、Cloudflare Tunnel経由で通信） |
 
 ### **Mail Server Stack**
 
@@ -107,16 +123,39 @@
 | **Reverse Proxy** | Nginx | 1.26 | HTTPS終端、Tailscale証明書 |
 | **User Management** | Flask + Python | 3.11 | ユーザー管理WebAPI（Phase 11） |
 
+### **Blog System Stack**
+
+| コンポーネント | 技術 | バージョン | 役割 |
+|----------------|------|-----------|------|
+| **CMS** | WordPress | 6.x | 16サイト運用 |
+| **Web Server** | Nginx | 1.26 | リバースプロキシ、5仮想ホスト |
+| **Application** | PHP-FPM | 8.x | WordPress実行環境 |
+| **Database** | MariaDB | 10.11 | 16データベース |
+| **Tunnel** | Cloudflared | Latest | Cloudflare Tunnel (5 Public Hostnames) |
+| **Cache** | Redis | 7.x | Object Cache（WordPress高速化） ✅ |
+
+### **Unified Portal Stack** 🆕
+
+| コンポーネント | 技術 | バージョン | 役割 |
+|----------------|------|-----------|------|
+| **Backend** | FastAPI | 0.109+ | REST API（Python 3.9+） |
+| **Frontend** | React | 18 | SPA（TypeScript + Vite） |
+| **UI Framework** | Tailwind CSS + shadcn/ui | 3.x | Xserver風デザインシステム |
+| **State Management** | Zustand + TanStack Query | Latest | 状態管理・データフェッチング |
+| **Database** | SQLite/PostgreSQL | - | ポータルメタデータ |
+| **External APIs** | Cloudflare API, Docker API, WordPress API | - | 統合管理 |
+
 ### **Cloud Infrastructure**
 
 | サービス | プロバイダ | 用途 | 実装 |
 |---------|-----------|------|------|
-| **Email Routing** | Cloudflare | MX受信 (無料) | Email Worker連携 |
-| **Email Worker** | Cloudflare | サーバーレスメール処理 | FastAPI転送 |
-| **Cloudflare Tunnel** | Cloudflare | セキュアな公開 (無料) | Blog + Mail API |
-| **S3** | AWS | オフサイトバックアップ (Object Lock) | 日次レプリケーション |
-| **IAM** | AWS | 最小権限ロール (Uploader/Admin) | Terraform管理 |
-| **CloudWatch** | AWS | コスト監視 (10円/100円閾値) | SNS通知連携 |
+| **Email Routing** | Cloudflare | MX受信 (無料) | ✅ Email Worker連携（2025-11-12運用開始） |
+| **Email Worker** | Cloudflare | サーバーレスメール処理 (無料) | ✅ FastAPI転送（EC2廃止、¥525/月削減） |
+| **Cloudflare Tunnel** | Cloudflare | セキュアな公開 (無料) | ✅ Blog + Mail API |
+| **S3** | AWS | オフサイトバックアップ (Object Lock) | ✅ 日次レプリケーション |
+| **IAM** | AWS | 最小権限ロール (Uploader/Admin) | ✅ Terraform管理 |
+| **CloudWatch** | AWS | コスト監視 (10円/100円閾値) | ✅ SNS通知連携 |
+| **EC2** | AWS | MX Gateway | ❌ **廃止済み**（2025-11-12） |
 
 ### **Development & Testing**
 
@@ -143,9 +182,11 @@
 ## 💡 プロジェクトの特徴・アピールポイント
 
 ### 1. **ハイブリッドクラウド構成**
-- オンプレミス（Dell）とクラウド（AWS EC2）の組み合わせ
-- Tailscale VPNによるセキュアな内部通信
+- オンプレミス（Dell）とクラウド（Cloudflare + AWS）の組み合わせ
+- Cloudflare Email Worker（サーバーレスMX受信）+ Cloudflare Tunnel（セキュア公開）
 - SendGrid SMTP Relayによる配信信頼性向上
+- **EC2 MX Gateway廃止により月額¥525削減**（2025-11-12完了）
+- **Tailscale VPN不要化**（Cloudflare Tunnel経由で通信）
 
 ### 2. **TDD（テスト駆動開発）の実践**
 - **38 tests implemented** (Phase 10 Backup System)
@@ -213,19 +254,26 @@ resource "aws_s3_bucket_object_lock_configuration" "backup_lock" {
 
 **月額想定コスト** (円建て):
 ```
-Cloudflare Email Routing:  $0/月  (完全無料)
-Cloudflare Email Worker:   $0/月  (無料枠内: 10万リクエスト/日)
-Cloudflare Tunnel:         $0/月  (完全無料)
-S3 STANDARD:               ~$0.025/GB/月 (≈3.5円/GB)
-CloudWatch Logs:           ~$0.50/月  (≈70円)
-SNS:                       Free tier
+【Cloudflare（完全無料）】
+  Email Routing:           $0/月  (完全無料)
+  Email Worker:            $0/月  (無料枠内: 10万リクエスト/日)
+  Cloudflare Tunnel:       $0/月  (完全無料)
+
+【AWS】
+  S3 STANDARD:             ~$0.025/GB/月 (≈3.5円/GB)
+  CloudWatch Logs:         ~$0.50/月  (≈70円)
+  SNS:                     Free tier
+
 Total:                     ~$1/月 (≈140円)
 ```
 
 **コスト削減実績**:
-- ✅ EC2廃止により **月額¥525 → ¥0** (2025-11-12完了)
-- ✅ Tailscale VPN不要により管理コスト削減
-- ✅ サーバーレス化により保守作業削減
+- ✅ **EC2廃止により月額¥525 → ¥0**（2025-11-12完了）
+  - Before: EC2 t3.nano (¥525/月) + Tailscale VPN
+  - After: Cloudflare Email Worker (¥0/月) + Cloudflare Tunnel (¥0/月)
+- ✅ **Tailscale VPN不要化**（管理コスト削減）
+- ✅ **サーバーレス化により保守作業削減**（OS更新・セキュリティパッチ不要）
+- ✅ **Xserver解約**（16サイト分、月額費用削減 - Phase A-1/A-2完了）
 
 **コスト監視**:
 - CloudWatch Alarms: 10円 (WARNING) / 100円 (CRITICAL)
@@ -277,6 +325,35 @@ logs/
 - ディスク容量監視（80%閾値）
 - S3コスト監視（CloudWatch + SNS）
 - マルウェア検出時即座通知
+
+### 10. **Unified Portal - 統合管理ポータル** 🆕
+
+**コンセプト**: Xserver風の直感的なUIで複数システムを一元管理
+
+**技術選定**:
+- **Backend**: FastAPI（高速、型安全、自動ドキュメント生成）
+- **Frontend**: React 18 + TypeScript + Vite（モダンSPA）
+- **UI**: Tailwind CSS + shadcn/ui（Xserver風デザインシステム）
+- **State**: Zustand + TanStack Query（効率的な状態管理）
+
+**実装済み機能** ✅:
+- **Cloudflare DNS API統合**（ゾーン管理、DNSレコードCRUD、プロキシ設定）
+- **Redis Object Cache統合**（WordPress高速化）
+- **8つの管理ページUI**（Dashboard, Docker, Database, PHP, Security, WordPress, Domain, Backup）
+
+**開発中機能** 🔄:
+- Docker API統合（コンテナ管理）
+- WordPress REST API統合（サイト管理）
+- 認証システム（JWT）
+- WebSocket（リアルタイム更新）
+
+**設計思想**:
+- API First（OpenAPI仕様準拠）
+- 段階的実装（Phase 1: UI基盤 → Phase 4: 本番デプロイ）
+- セキュリティ重視（認証・認可・CORS設定）
+- ドキュメント完備（ARCHITECTURE.md, LOCAL_DEVELOPMENT.md等）
+
+**参照**: [docs/application/unified-portal/README.md](docs/application/unified-portal/README.md)
 
 ---
 
@@ -358,13 +435,39 @@ logs/
 │   │   ├── Dockerfile                      # Container definition
 │   │   └── requirements.txt                # Python dependencies
 │   └── troubleshoot/                       # トラブルシューティング
-├── services/blog/                          # Blog System実装 ✅ NEW
-│   ├── docker-compose.yml                  # マルチコンテナ定義
+├── services/blog/                          # Blog System実装 ✅
+│   ├── docker-compose.yml                  # マルチコンテナ定義（5コンテナ）
 │   ├── .env                                # 環境変数（機密情報）
-│   └── config/                             # 設定ファイル
-│       ├── nginx/                          # Nginx設定（5仮想ホスト）
-│       ├── php/                            # PHP-FPM設定
-│       └── mariadb/                        # MariaDB設定（16 DBs）
+│   ├── config/                             # 設定ファイル
+│   │   ├── nginx/conf.d/                   # Nginx設定（5仮想ホスト）
+│   │   ├── wordpress/                      # PHP設定、WP Mail SMTP設定
+│   │   ├── mariadb/init/                   # MariaDB設定（16 DBs）
+│   │   └── cloudflared/                    # Cloudflare Tunnel設定
+│   └── scripts/                            # 運用スクリプト ✨
+│       ├── create-new-wp-site.sh           # 新規サイト作成ウィザード
+│       ├── setup-wp-mail-smtp.sh           # WP Mail SMTP一括設定
+│       ├── check-wp-mail-smtp.sh           # SMTP設定確認
+│       ├── generate-nginx-subdirectories.sh # Nginx設定生成
+│       ├── setup-redis-object-cache.sh     # Redis Object Cache設定
+│       └── test-redis-performance.sh       # Redis性能テスト
+├── services/unified-portal/                # Unified Portal実装 🆕
+│   ├── backend/                            # FastAPI バックエンド
+│   │   ├── app/
+│   │   │   ├── routers/                    # APIルーター
+│   │   │   │   └── domains.py              # Cloudflare DNS API ✅
+│   │   │   ├── config.py                   # 設定管理
+│   │   │   ├── database.py                 # SQLAlchemy ORM
+│   │   │   └── main.py                     # エントリーポイント
+│   │   └── requirements.txt                # Python依存関係
+│   ├── frontend/                           # React フロントエンド
+│   │   ├── src/
+│   │   │   ├── components/                 # UIコンポーネント（shadcn/ui）
+│   │   │   ├── pages/                      # 8管理ページ
+│   │   │   │   ├── DomainManagement.tsx    # Cloudflare DNS統合 ✅
+│   │   │   │   └── ...                     # その他7ページ
+│   │   │   └── lib/                        # API クライアント、ユーティリティ
+│   │   └── package.json                    # npm依存関係
+│   └── docker-compose.yml                  # 開発環境構成
 └── README.md                               # 本ファイル（プロジェクト概要）
 ```
 
@@ -430,6 +533,27 @@ logs/
 ### **P011: サブディレクトリ表示問題** ✅ 解決 (2025-11-11)
 - **Nginx HTTPS検出パラメータ追加**: `fastcgi_param HTTPS on;` 等を8箇所追加
 - **Elementor jQuery 404エラー解消**: blog.kuma8088.com配下10サイト正常化
+
+### **Cloudflare Email Worker移行** ✅ 完了 (2025-11-12)
+- **EC2 MX Gateway廃止**: 月額¥525削減
+- **Email Worker実装**: サーバーレスMX受信（JavaScript）
+- **mailserver-api追加**: FastAPI（9コンテナ目）、LMTP転送エンドポイント
+- **Tailscale VPN廃止**: Cloudflare Tunnel経由で通信、管理コスト削減
+- **新フロー確立**: Internet → Cloudflare Email Routing → Email Worker → Cloudflare Tunnel → mailserver-api (FastAPI) → Dovecot LMTP
+
+### **Redis Object Cache統合** ✅ 完了 (2025-11-13)
+- **Redis 5コンテナ目追加**: Blog System高速化
+- **自動化スクリプト**: setup-redis-object-cache.sh（全16サイト一括設定）
+- **性能テストツール**: test-redis-performance.sh
+- **関連Issue**: I006完了
+
+### **Unified Portal Phase 1** 🔄 実装中 (2025-11-13-)
+- ✅ **プロジェクト構造作成**: FastAPI + React + TypeScript
+- ✅ **Cloudflare DNS API統合完了**: ゾーン管理、DNSレコードCRUD、プロキシ設定
+- ✅ **8管理ページUI完成**: Dashboard, Docker, Database, PHP, Security, WordPress, Domain, Backup
+- ✅ **Xserver風デザイン**: Tailwind CSS + shadcn/ui
+- 🔄 **残りAPI統合**: Docker, WordPress, Database, Backup（Phase 2で実装予定）
+- **関連Issue**: I001（ポータル統合）、I002（UI刷新完了）、I003（機能拡張）
 
 ### **Phase B: Blog Production Hardening** 📋 計画中
 - バックアップシステム実装（Mailserver Phase 11-B統合検討）
@@ -722,15 +846,20 @@ terraform show
 | **Phase 10 Backup実装** | [docs/application/mailserver/backup/03_implementation.md](docs/application/mailserver/backup/03_implementation.md) |
 | **Phase 11-B S3 Backup** | [docs/application/mailserver/backup/07_s3backup_implementation.md](docs/application/mailserver/backup/07_s3backup_implementation.md) |
 | **User Management (Phase 11)** | [docs/application/mailserver/usermgmt/README.md](docs/application/mailserver/usermgmt/README.md) |
-| **Phase A-1 Blog Migration** | [docs/application/blog/phase-a1-bulk-migration.md](docs/application/blog/phase-a1-bulk-migration.md) ✅ NEW |
+| **Cloudflare Email Worker** | [docs/application/mailserver/migration/cloudflare-email-worker-implementation.md](docs/application/mailserver/migration/cloudflare-email-worker-implementation.md) ✅ **運用中** |
+| **Phase A-1 Blog Migration** | [docs/application/blog/phases/phase-a1-completion.md](docs/application/blog/phases/phase-a1-completion.md) ✅ |
+| **Phase A-2 Production Domain** | [docs/application/blog/phases/phase-a2-completion.md](docs/application/blog/phases/phase-a2-completion.md) ✅ |
+| **Blog Issue Management** | [docs/application/blog/issue/README.md](docs/application/blog/issue/README.md) |
+| **Unified Portal** | [docs/application/unified-portal/README.md](docs/application/unified-portal/README.md) 🆕 **Phase 1実装中** |
 | **トラブルシューティング (Mailserver)** | [services/mailserver/troubleshoot/README.md](services/mailserver/troubleshoot/README.md) |
 
 ---
 
-**Last Updated**: 2025-11-12
-**Version**: 1.2.0
-**Status**: Multi-Service Production (Mailserver ✅ + Blog System ✅)
+**Last Updated**: 2025-11-13
+**Version**: 1.3.0
+**Status**: Multi-Service Production (Mailserver ✅ + Blog System ✅) + Unified Portal 🔄 (Phase 1実装中)
 **Recent Updates**:
-- ✅ Cloudflare Email Worker実装完了 (2025-11-12)
-- ✅ EC2 MX Gateway廃止、月額コスト¥525削減
-- ✅ Blog System Phase A-2完了 (本番ドメイン移行)
+- ✅ **Unified Portal Phase 1実装中**: Cloudflare DNS API統合完了、8管理ページUI完成 (2025-11-13)
+- ✅ **Redis Object Cache統合完了**: WordPress高速化、全16サイト対応 (2025-11-13)
+- ✅ **Cloudflare Email Worker運用開始**: EC2廃止により月額¥525削減 (2025-11-12)
+- ✅ **Blog System Phase A-2完了**: 本番ドメイン移行、WP Mail SMTP設定 (2025-11-12)
