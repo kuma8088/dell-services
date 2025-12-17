@@ -713,4 +713,6 @@ cd services/mailserver/scripts
 
 ネットワークセールスエンジニア / 個人開発エンジニア / ウェブマーケター
 
+📜 CCNA / LPIC-1, 2, 303 Security / AWS SAA
+
 📧 info@kuma8088.com
