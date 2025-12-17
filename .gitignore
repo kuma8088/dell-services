@@ -102,27 +102,12 @@ services/mailserver/docker-compose.yml.phase*.backup
 # Serena MCP configuration
 .serena/
 
-# Internal documentation (contains sensitive system details)
-docs/infra/internal/
-docs/**/internal/
+# All documentation except top-level README.md (keep locally, not public)
+docs/
 
-# Detailed design docs with network/port info (keep locally, not public)
-docs/infra/02_design.md
-docs/infra/03_Firewall*.md
-docs/infra/04_installation.md
-docs/infra/staging/
-
-# Blog project sensitive files (NEVER commit these)
-docs/application/blog/claudedocs/xserver-credentials.env
-docs/application/blog/claudedocs/xserver-credentials-vault.yml
-docs/application/blog/claudedocs/*-credentials.*
-docs/application/blog/claudedocs/xserver-investigation-commands.sh
-docs/application/blog/claudedocs/xserver-investigation-template.sh
-docs/application/blog/claudedocs/xserver-investigation-results.txt
-docs/application/blog/claudedocs/xserver-db-credentials.md
-docs/application/blog/claudedocs/xserver-site-sizes.md
-docs/application/blog/claudedocs/xserver-versions.md
-docs/application/blog/claudedocs/xserver-htaccess*.md
+# Service documentation and internal files
+services/**/*.md
+services/**/docs/
 
 # Cloudflare Workers and Wrangler (NEVER commit these)
 .wrangler-config/
