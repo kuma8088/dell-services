@@ -102,8 +102,8 @@ services/mailserver/docker-compose.yml.phase*.backup
 # Serena MCP configuration
 .serena/
 
-# All documentation except top-level README.md (keep locally, not public)
-docs/
+# Private documentation (internal details, keep locally)
+docs/private/
 
 # Service documentation and internal files
 services/**/*.md
