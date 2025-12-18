@@ -1,6 +1,5 @@
 # メールサーバーデプロイメント戦略
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: Docker Compose, Terraform, Cloudflare
 
 ---
@@ -95,9 +94,6 @@ volumes:
 networks:
   mailserver_network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
 ```
 
 **設計意図**:
@@ -174,7 +170,7 @@ locals {
     Project     = "mailserver-backup"
     Environment = var.environment
     ManagedBy   = "terraform"
-    Owner       = "kuma8088"
+    Owner       = "admin"
   }
 }
 ```

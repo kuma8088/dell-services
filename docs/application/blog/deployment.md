@@ -1,6 +1,5 @@
 # ブログシステムデプロイメント戦略
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: Docker Compose, Nginx, WordPress, Cloudflare Tunnel
 
 ---
@@ -93,14 +92,10 @@ volumes:
 networks:
   blog_network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.21.0.0/24
 ```
 
 **設計意図**:
-- Mailserver（172.20.0.0/16）との分離
-- 固定IPで設定管理を容易化
+- 他サービスとのネットワーク分離
 - コンテナ間通信の制御
 
 ### 2.4 ヘルスチェック設計
@@ -171,7 +166,7 @@ docker compose logs --tail=50
 
 ```bash
 # Nginx設定変更の場合
-vim config/nginx/conf.d/kuma8088.conf
+vim config/nginx/conf.d/main-site.conf
 
 # 設定検証
 docker compose exec nginx nginx -t
@@ -180,7 +175,7 @@ docker compose exec nginx nginx -t
 docker compose exec nginx nginx -s reload
 
 # 動作確認
-curl -I https://blog.kuma8088.com/
+curl -I https://blog.example.com/
 ```
 
 ### 3.4 デプロイ前チェックリスト
@@ -374,7 +369,7 @@ docker compose up -d
 
 ```bash
 # Git から復元
-git checkout HEAD~1 -- config/nginx/conf.d/kuma8088.conf
+git checkout HEAD~1 -- config/nginx/conf.d/main-site.conf
 docker compose exec nginx nginx -t
 docker compose exec nginx nginx -s reload
 ```
@@ -421,19 +416,19 @@ credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
   # メインサイト
-  - hostname: blog.kuma8088.com
+  - hostname: blog.example.com
     service: http://nginx:80
     originRequest:
       noTLSVerify: true
 
   # 追加ドメイン
-  - hostname: cameramanual.net
+  - hostname: site-b.example.net
     service: http://nginx:80
-  - hostname: wpbook.jp
+  - hostname: site-c.example.jp
     service: http://nginx:80
-  - hostname: wataame-it.com
+  - hostname: site-d.example.com
     service: http://nginx:80
-  - hostname: elementor-demo.kuma8088.com
+  - hostname: elementor-demo.example.com
     service: http://nginx:80
 
   # フォールバック
@@ -462,7 +457,7 @@ ingress:
 ./scripts/setup-wp-mail-smtp.sh --dry-run
 
 # 単一サイト指定
-./scripts/setup-wp-mail-smtp.sh --site kuma8088 blog.kuma8088.com noreply@kuma8088.com
+./scripts/setup-wp-mail-smtp.sh --site sitename blog.example.com noreply@example.com
 
 # テストメール送信
 ./scripts/setup-wp-mail-smtp.sh --test-email your@email.com

@@ -1,6 +1,5 @@
 # ブログシステム運用設計
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: Docker Compose, WordPress, Nginx, wp-cli
 
 ---
@@ -52,9 +51,9 @@ docker compose exec mariadb mysqladmin -u root ping
 docker compose exec redis redis-cli ping
 
 # サイト応答確認
-curl -I https://blog.kuma8088.com/
-curl -I https://cameramanual.net/
-curl -I https://wpbook.jp/
+curl -I https://blog.example.com/
+curl -I https://site-b.example.net/
+curl -I https://site-c.example.jp/
 ```
 
 ### 2.3 ログ監視
@@ -97,7 +96,7 @@ docker compose exec mariadb mysqldump \
 
 # サイト別バックアップ
 docker compose exec mariadb mysqldump \
-  -u root -p blog_kuma8088 > kuma8088.sql
+  -u root -p blog_main > main.sql
 ```
 
 **ファイルバックアップ**:
@@ -156,7 +155,7 @@ docker compose exec -T mariadb mysql -u root -p < \
 docker compose start wordpress
 
 # 4. 動作確認
-curl -I https://blog.kuma8088.com/
+curl -I https://blog.example.com/
 ```
 
 ### 4.3 ファイルリストア
@@ -185,8 +184,8 @@ docker compose ps
 docker compose logs --tail=50
 
 # サイト表示確認
-curl -I https://blog.kuma8088.com/
-curl -I https://cameramanual.net/
+curl -I https://blog.example.com/
+curl -I https://site-b.example.net/
 ```
 
 ---
@@ -259,7 +258,7 @@ docker compose restart nginx wordpress
 docker compose exec mariadb mysqladmin -u root -p status
 
 # 2. 接続テスト
-docker compose exec wordpress php -r "new PDO('mysql:host=mariadb;dbname=blog_kuma8088', 'wordpress', 'password');"
+docker compose exec wordpress php -r "new PDO('mysql:host=mariadb;dbname=blog_main', 'wordpress', 'password');"
 
 # 3. 再起動
 docker compose restart mariadb wordpress

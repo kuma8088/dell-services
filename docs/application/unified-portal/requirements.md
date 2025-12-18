@@ -1,6 +1,5 @@
 # 統合管理ポータル要件定義
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: FastAPI, React, TypeScript, Tailwind CSS, Docker Compose
 
 ---
@@ -181,8 +180,8 @@
 
 | 制約 | 詳細 |
 |------|------|
-| 実行環境 | Dell WorkStation（Rocky Linux 9.6） |
-| ネットワーク | Docker内部ネットワーク（172.20.x.x） |
+| 実行環境 | Rocky Linux 9.6 |
+| ネットワーク | Docker内部ネットワーク |
 | リソース | RAM 32GB、既存サービスとリソース共有 |
 
 ---

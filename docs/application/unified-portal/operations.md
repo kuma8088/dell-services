@@ -1,6 +1,5 @@
 # 統合管理ポータル 運用設計
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: FastAPI, React, Docker Compose, pytest, Vitest
 
 ---
@@ -49,16 +48,16 @@ cd /opt/onprem-infra-system/project-root-infra/services/unified-portal
 docker compose ps
 
 # Backend ヘルスチェック
-curl http://172.20.0.90:8000/api/health
+curl http://localhost:8000/api/health
 
 # 期待出力
 # {"status":"healthy","version":"0.1.0"}
 
 # Nginx ヘルスチェック
-curl http://172.20.0.92/health
+curl http://localhost:8080/health
 
 # Frontend確認
-curl -I http://172.20.0.92/
+curl -I http://localhost:8080/
 ```
 
 ### 2.3 ログ監視
@@ -263,7 +262,7 @@ docker compose up -d frontend nginx
 
 ```bash
 # 1. Backend状態確認
-curl http://172.20.0.90:8000/api/health
+curl http://localhost:8000/api/health
 
 # 2. Nginxプロキシ確認
 docker compose logs nginx | grep -i error

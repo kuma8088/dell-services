@@ -1,6 +1,5 @@
 # ブログシステムアーキテクチャ設計
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: Docker Compose, WordPress, Nginx, MariaDB, Redis, Cloudflare Tunnel
 
 ---
@@ -40,7 +39,7 @@
                        │ HTTP
         ┌──────────────┴──────────────┐
         │     Docker Network          │
-        │     172.21.0.0/24           │
+        │     blog_network            │
         │  ┌─────────────────────┐    │
         │  │      Nginx          │    │
         │  │  (リバースプロキシ)  │    │
@@ -78,18 +77,15 @@
 networks:
   blog_network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.21.0.0/24
 ```
 
-| コンテナ | IPアドレス |
-|---------|-----------|
-| nginx | 172.21.0.10 |
-| wordpress | 172.21.0.20 |
-| mariadb | 172.21.0.30 |
-| cloudflared | 172.21.0.40 |
-| redis | 172.21.0.50 |
+| コンテナ | 役割 |
+|---------|------|
+| nginx | リバースプロキシ |
+| wordpress | アプリケーション |
+| mariadb | データベース |
+| cloudflared | トンネル |
+| redis | キャッシュ |
 
 ---
 
@@ -101,16 +97,16 @@ networks:
 
 | ファイル | 対象サイト |
 |---------|-----------|
-| kuma8088.conf | blog.kuma8088.com（サブディレクトリ10サイト） |
-| cameramanual.conf | cameramanual.net |
-| elementor-demo.conf | elementor-demo.kuma8088.com |
-| wataame-it.conf | wataame-it.com |
-| wpbook-jp.conf | wpbook.jp |
+| main-site.conf | blog.example.com（サブディレクトリ10サイト） |
+| site-b.conf | site-b.example.net |
+| elementor-demo.conf | elementor-demo.example.com |
+| site-c.conf | site-c.example.com |
+| site-d.conf | site-d.example.jp |
 
-### 3.2 サブディレクトリ構成（kuma8088.com）
+### 3.2 サブディレクトリ構成
 
 ```
-blog.kuma8088.com/
+blog.example.com/
 ├── /                    # メインサイト
 ├── /ec02test/           # テストサイト
 ├── /gallery-demo/       # ギャラリーデモ
@@ -208,11 +204,11 @@ define('FORCE_SSL_ADMIN', true);
 
 ```sql
 -- データベース一覧
-blog_kuma8088           -- メインサイト
-blog_kuma8088_ec02test  -- サブディレクトリサイト
-blog_kuma8088_gallery   -- ...
-blog_cameramanual       -- 独立ドメインサイト
-blog_wpbookjp           -- ...
+blog_main               -- メインサイト
+blog_main_subsite1      -- サブディレクトリサイト
+blog_main_subsite2      -- ...
+blog_site_b             -- 独立ドメインサイト
+blog_site_c             -- ...
 ```
 
 ### 5.2 テーブルプレフィックス
@@ -226,8 +222,8 @@ blog_wpbookjp           -- ...
 
 ```bash
 # サイト別論理バックアップ
-mysqldump -u root -p blog_kuma8088 > kuma8088.sql
-mysqldump -u root -p blog_cameramanual > cameramanual.sql
+mysqldump -u root -p blog_main > main.sql
+mysqldump -u root -p blog_site_b > site_b.sql
 ```
 
 ---
@@ -268,7 +264,7 @@ mysqldump -u root -p blog_cameramanual > cameramanual.sql
 define('WP_REDIS_HOST', 'redis');
 define('WP_REDIS_PORT', 6379);
 define('WP_REDIS_DATABASE', 0);
-define('WP_REDIS_PREFIX', 'wp_kuma8088:'); // サイト別プレフィックス
+define('WP_REDIS_PREFIX', 'wp_sitename:'); // サイト別プレフィックス
 ```
 
 ---
@@ -308,11 +304,11 @@ tunnel: <tunnel-id>
 credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
-  - hostname: blog.kuma8088.com
+  - hostname: blog.example.com
     service: http://nginx:80
-  - hostname: cameramanual.net
+  - hostname: site-b.example.net
     service: http://nginx:80
-  - hostname: wpbook.jp
+  - hostname: site-c.example.jp
     service: http://nginx:80
   # ... 他のドメイン
   - service: http_status:404

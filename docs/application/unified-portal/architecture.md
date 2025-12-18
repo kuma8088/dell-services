@@ -1,6 +1,5 @@
 # 統合管理ポータル アーキテクチャ設計
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: FastAPI, React, TypeScript, Tailwind CSS, Docker Compose
 
 ---
@@ -29,19 +28,16 @@
                        │
         ┌──────────────┴──────────────┐
         │     Docker Network          │
-        │     172.20.0.0/24           │
         │                             │
         │  ┌─────────────────────┐    │
         │  │      Nginx          │    │
         │  │  (リバースプロキシ)  │    │
-        │  │   172.20.0.92       │    │
         │  └──────────┬──────────┘    │
         │        ┌────┴────┐          │
         │        ▼         ▼          │
         │  ┌──────────┐ ┌──────────┐  │
         │  │ Frontend │ │ Backend  │  │
         │  │  React   │ │ FastAPI  │  │
-        │  │ .0.91    │ │ .0.90    │  │
         │  └──────────┘ └────┬─────┘  │
         │                    │        │
         │                    ▼        │
@@ -78,16 +74,13 @@
 networks:
   portal_network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
 ```
 
-| コンテナ | IPアドレス |
-|---------|-----------|
-| backend | 172.20.0.90 |
-| frontend | 172.20.0.91 |
-| nginx | 172.20.0.92 |
+| コンテナ | 役割 |
+|---------|------|
+| backend | APIサーバー |
+| frontend | SPAビルド |
+| nginx | リバースプロキシ |
 
 ---
 
@@ -380,9 +373,9 @@ User Browser
 Cloudflare Tunnel
     │
     ▼ HTTP
-Nginx (172.20.0.92)
+Nginx
     │
-    ├──▶ /api/* → Backend (172.20.0.90)
+    ├──▶ /api/* → Backend
     │                │
     │                ├──▶ MariaDB
     │                └──▶ External APIs

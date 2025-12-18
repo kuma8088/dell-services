@@ -1,6 +1,5 @@
 # メールサーバー要件定義
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: Docker Compose, Postfix, Dovecot, Cloudflare
 
 ---

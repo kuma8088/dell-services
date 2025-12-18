@@ -1,6 +1,5 @@
 # 統合管理ポータル デプロイメント戦略
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: Docker Compose, FastAPI, React, Nginx, Cloudflare Tunnel
 
 ---
@@ -89,8 +88,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
-      portal_network:
-        ipv4_address: 172.20.0.90
+      - portal_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
@@ -105,10 +103,9 @@ services:
     container_name: unified-portal-frontend
     restart: always
     environment:
-      - VITE_API_BASE_URL=http://172.20.0.90:8000/api/v1
+      - VITE_API_BASE_URL=http://backend:8000/api/v1
     networks:
-      portal_network:
-        ipv4_address: 172.20.0.91
+      - portal_network
 
   nginx:
     image: nginx:alpine
@@ -123,8 +120,7 @@ services:
       - backend
       - frontend
     networks:
-      portal_network:
-        ipv4_address: 172.20.0.92
+      - portal_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
@@ -134,16 +130,12 @@ services:
 networks:
   portal_network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
 ```
 
 ### 2.3 ネットワーク戦略
 
 **設計意図**:
-- Mailserver（172.20.0.0/24）と同一サブネット使用（DBアクセス用）
-- 固定IPで設定管理を容易化
+- Mailserverと同一サブネット使用（DBアクセス用）
 - 既存サービスとのリソース共有
 
 ### 2.4 ヘルスチェック設計
@@ -218,7 +210,7 @@ npm run build
 docker compose restart nginx
 
 # 3. 確認
-curl -I http://172.20.0.92/
+curl -I http://localhost:8080/
 ```
 
 ### 3.4 Backend更新のみ
@@ -231,7 +223,7 @@ docker compose build backend
 docker compose up -d backend
 
 # 3. ヘルスチェック
-curl http://172.20.0.90:8000/api/health
+curl http://localhost:8000/api/health
 ```
 
 ### 3.5 デプロイ前チェックリスト
@@ -304,7 +296,7 @@ npm run dev
 
 ```nginx
 upstream backend {
-    server 172.20.0.90:8000;
+    server backend:8000;
 }
 
 server {
@@ -382,14 +374,14 @@ CLOUDFLARE_EMAIL=your-email@example.com
 DOCKER_HOST=unix:///var/run/docker.sock
 
 # CORS
-CORS_ORIGINS=["http://172.20.0.91:5173","http://localhost:5173"]
+CORS_ORIGINS=["http://localhost:5173"]
 ```
 
 ### 6.2 Frontend環境変数
 
 ```bash
-VITE_API_BASE_URL=http://172.20.0.90:8000/api/v1
-VITE_WS_BASE_URL=ws://172.20.0.90:8000/ws
+VITE_API_BASE_URL=http://localhost:8000/api/v1
+VITE_WS_BASE_URL=ws://localhost:8000/ws
 ```
 
 ### 6.3 .gitignore
@@ -422,8 +414,8 @@ credentials-file: /etc/cloudflared/credentials.json
 
 ingress:
   # Unified Portal
-  - hostname: admin.kuma8088.com
-    service: http://172.20.0.92:80
+  - hostname: admin.example.com
+    service: http://nginx:80
     originRequest:
       noTLSVerify: true
 
@@ -479,7 +471,7 @@ docker compose restart nginx
 
 | 項目 | 設定 |
 |------|------|
-| DB接続 | 同一MariaDBインスタンス（172.20.0.60） |
+| DB接続 | 同一MariaDBインスタンス |
 | ネットワーク | portal_network → mailserver_network ブリッジ |
 | Flask usermgmt | REST API経由でデータ取得 |
 

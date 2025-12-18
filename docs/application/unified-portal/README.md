@@ -1,8 +1,6 @@
 # 統合管理ポータル
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
-
-Dell WorkStation環境のブログシステム + メールサーバー + Cloudflare DNSを一元管理するWebベースの統合管理ポータル
+ブログシステム + メールサーバー + Cloudflare DNSを一元管理するWebベースの統合管理ポータル
 
 ---
 
@@ -84,8 +82,8 @@ Dell WorkStation環境のブログシステム + メールサーバー + Cloudfl
 
 ```
 portal_network (Docker Bridge)
-├── backend (FastAPI) - 172.20.0.90:8000
-└── frontend (React/Nginx) - 172.20.0.91
+├── backend (FastAPI)
+└── frontend (React/Nginx)
 ```
 
 ### バックエンドAPI構成

@@ -1,6 +1,5 @@
 # メールサーバーアーキテクチャ設計
 
-**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 **技術スタック**: Docker Compose, Postfix, Dovecot, Cloudflare
 
 ---
@@ -197,9 +196,6 @@
 networks:
   mailserver_network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
 ```
 
 ### 4.2 ポート設計
