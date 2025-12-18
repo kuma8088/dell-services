@@ -2,7 +2,7 @@
 
 **作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 
-Dell WorkStation環境のBlog System + Mailserver + Cloudflare DNSを一元管理するWebベースの統合管理ポータル
+Dell WorkStation環境のブログシステム + メールサーバー + Cloudflare DNSを一元管理するWebベースの統合管理ポータル
 
 ---
 
@@ -21,8 +21,8 @@ Dell WorkStation環境のBlog System + Mailserver + Cloudflare DNSを一元管�
 
 | カテゴリ | 技術 |
 |---------|------|
-| **Backend** | FastAPI 0.109+, Python 3.9+ |
-| **Frontend** | React 18, TypeScript 5.0+, Vite 5 |
+| **バックエンド** | FastAPI 0.109+, Python 3.9+ |
+| **フロントエンド** | React 18, TypeScript 5.0+, Vite 5 |
 | **UI** | Tailwind CSS 3, shadcn/ui |
 | **状態管理** | TanStack Query, Zustand |
 | **コンテナ** | Docker, Docker Compose |
@@ -32,98 +32,141 @@ Dell WorkStation環境のBlog System + Mailserver + Cloudflare DNSを一元管�
 
 ---
 
-## Project Overview
+## プロジェクト概要
 
-### Objectives
+### 目的
 
-**Primary Goal**: Blog System + Mailserver + Cloudflare DNSの一元管理
+**主目標**: ブログシステム + メールサーバー + Cloudflare DNSの一元管理
 
-**Technical Goals**:
+**技術目標**:
 - ✅ モダンUI/UX（Xserver風インターフェース）
 - ✅ Cloudflare DNS API統合
-- 🔄 Docker管理統合（実装中）
-- 📝 WordPress管理統合（計画中）
-- 📝 リアルタイム監視（計画中）
+- ✅ Docker管理API実装
+- ✅ WordPress管理API実装
+- ✅ データベース管理API実装
+- ✅ セキュリティ管理API実装
+- ✅ バックアップ管理API実装
+- ✅ メールサーバー管理API実装
 
-### 管理機能（8ページ）
+---
+
+## 現在の稼働状況
+
+### 本番稼働中
+
+| コンテナ | 状態 | 稼働期間 |
+|---------|------|----------|
+| backend (FastAPI) | ✅ Healthy | 2週間 |
+| frontend (React) | ✅ Healthy | 2週間 |
+
+### 管理機能（12ページ）
 
 | ページ | 説明 | 状況 |
 |--------|------|------|
-| Dashboard | システム概要・リソース使用状況 | UI完成 |
-| Docker Management | コンテナ管理 | UI完成・API待ち |
-| Database Management | データベース管理 | UI完成・API待ち |
-| Domain Management | Cloudflare DNS管理 | ✅ 完了 |
-| WordPress Management | WordPressサイト管理 | UI完成・API待ち |
-| Backup Management | バックアップ管理 | UI完成・API待ち |
-| Security Management | セキュリティ設定 | UI完成・API待ち |
-| Settings | システム設定 | UI完成 |
+| ダッシュボード | システム概要・リソース使用状況 | ✅ 実装済み |
+| Docker管理 | コンテナ管理 | ✅ 実装済み |
+| データベース管理 | MariaDB管理 | ✅ 実装済み |
+| ドメイン管理 | Cloudflare DNS管理 | ✅ 実装済み |
+| WordPress管理 | サイト管理 | ✅ 実装済み |
+| バックアップ管理 | バックアップ操作 | ✅ 実装済み |
+| セキュリティ管理 | セキュリティ設定 | ✅ 実装済み |
+| PHP管理 | PHP設定 | ✅ 実装済み |
+| メールサーバー管理 | メールユーザー管理 | ✅ 実装済み |
+| ユーザー管理 | 管理者アカウント | ✅ 実装済み |
+| マネージドサイト作成 | WordPress新規作成 | ✅ 実装済み |
+| ログイン | 認証 | ✅ 実装済み |
 
 ---
 
-## System Architecture
+## システムアーキテクチャ
 
-### Container Composition
+### コンテナ構成
 
 ```
 portal_network (Docker Bridge)
-├── backend (FastAPI) - 172.20.0.90
-├── frontend (React) - 172.20.0.91
-└── nginx (Reverse Proxy) - 172.20.0.92
+├── backend (FastAPI) - 172.20.0.90:8000
+└── frontend (React/Nginx) - 172.20.0.91
 ```
 
-### Network Flow
+### バックエンドAPI構成
+
+| ルーター | 機能 |
+|---------|------|
+| auth.py | 認証・JWT管理 |
+| dashboard.py | システム統計 |
+| docker.py | コンテナ操作 |
+| database.py | DB管理 |
+| domains.py | Cloudflare DNS |
+| wordpress.py | WordPress管理 |
+| backup.py | バックアップ操作 |
+| security.py | セキュリティ設定 |
+| php.py | PHP設定 |
+| mailserver.py | メールユーザー管理 |
+
+### ネットワークフロー
 
 ```
-[User] → [Cloudflare Edge] → [Tunnel] → [nginx] → [Backend/Frontend]
-          ↓                    ↓
-       DDoS protection    outbound-only connection
-       SSL/TLS auto       (no port forwarding required)
+[ユーザー] → [Cloudflare Edge] → [Tunnel] → [nginx] → [Backend/Frontend]
+              ↓                    ↓
+           DDoS防御            アウトバウンド接続のみ
+           SSL/TLS自動          （ポート開放不要）
 ```
 
 ---
 
-## Current Status
+## 実装フェーズ
 
-### ✅ Completed
+### Phase 1: 基盤構築（✅ 完了）
 
-1. **UI実装（Phase 1）**
-   - 8つの管理ページUI
-   - shadcn/ui コンポーネント統合
-   - レスポンシブデザイン
-   - ダークモード対応
+- ✅ FastAPIバックエンド基盤
+- ✅ Reactフロントエンド基盤
+- ✅ Cloudflare DNS API統合
+- ✅ 12ページのUI/API実装
+- ✅ JWT認証システム
+- ✅ Docker Compose本番設定
 
-2. **Cloudflare DNS API統合**
-   - ゾーン一覧取得
-   - DNSレコードCRUD操作
-   - プロキシ設定対応
-   - TTL設定対応
+### Phase 2: 機能拡張（計画中）
 
-### 🔄 In Progress
-
-- Docker管理API統合
-- WordPress REST API統合
-- リアルタイムログ表示
-
-### 📝 Planned
-
-- JWT認証システム
 - WebSocketリアルタイム更新
-- Mailserverユーザー管理統合
-- バックアップAPI統合
+- 監視・アラート機能
+- ログビューア機能強化
 
 ---
 
-## Quick Start
+## ディレクトリ構成
+
+```
+services/unified-portal/
+├── backend/                # FastAPIバックエンド
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── routers/       # 10個のAPIルーター
+│   │   ├── models/
+│   │   └── services/
+│   └── requirements.txt
+├── frontend/               # Reactフロントエンド
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/         # 12ページ
+│   │   └── lib/
+│   └── package.json
+├── nginx/                  # Nginx設定
+└── docker-compose.yml
+```
+
+---
+
+## クイックスタート
 
 ### 開発環境
 
 ```bash
-# Backend起動
+# バックエンド起動
 cd services/unified-portal/backend
 source venv/bin/activate
 uvicorn app.main:app --reload
 
-# Frontend起動
+# フロントエンド起動
 cd services/unified-portal/frontend
 npm install
 npm run dev
@@ -140,70 +183,15 @@ docker compose up -d
 
 | サービス | URL |
 |---------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
+| フロントエンド | http://localhost:5173 |
+| バックエンドAPI | http://localhost:8000 |
+| APIドキュメント | http://localhost:8000/docs |
 
 ---
 
-## Directory Structure
+## 参考情報
 
-```
-services/unified-portal/
-├── backend/                # FastAPI Backend
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── models/
-│   │   ├── routers/
-│   │   └── services/
-│   └── requirements.txt
-├── frontend/               # React Frontend
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   └── lib/
-│   └── package.json
-├── nginx/                  # Nginx設定
-└── docker-compose.yml
-```
-
----
-
-## Implementation Phases
-
-### Phase 1: 基盤構築（✅ 完了）
-
-- FastAPI バックエンド基盤
-- React フロントエンド基盤
-- Cloudflare DNS API統合
-- 8つの管理ページUI実装
-
-### Phase 2: API統合（計画中）
-
-- Docker API統合
-- WordPress REST API統合
-- MariaDB管理API
-- バックアップAPI
-
-### Phase 3: 高度な機能（計画中）
-
-- JWT認証システム
-- WebSocketリアルタイム更新
-- Mailserverユーザー管理統合
-- 監視・アラート機能
-
-### Phase 4: 本番デプロイ（計画中）
-
-- Docker Compose本番設定
-- Cloudflare Tunnel統合
-- セキュリティ監査
-- 本番環境デプロイ
-
----
-
-## Reference Information
-
-### Official Documentation
+### 公式ドキュメント
 
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [React](https://react.dev/)
@@ -212,11 +200,7 @@ services/unified-portal/
 - [shadcn/ui](https://ui.shadcn.com/)
 - [TanStack Query](https://tanstack.com/query/)
 
-### Project Documentation
-
-- [docs/application/unified-portal/](.)
-
 ---
 
-**Version**: 1.0
-**Current Phase**: Phase 1 完了、Phase 2 計画中
+**Version**: 2.0
+**現在のフェーズ**: Phase 1完了、本番稼働中
