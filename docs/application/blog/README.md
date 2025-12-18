@@ -1,22 +1,33 @@
-# Multi-Site WordPress System with Cloudflare Tunnel
+# ブログシステム構築プロジェクト
 
-**Project Overview**: Multi-site WordPress hosting environment using Docker Compose and Cloudflare Tunnel
+**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 
-**Environment**: Linux server + Docker Compose
+Docker Compose環境で複数WordPress サイトをホスティングするプロジェクトドキュメント
 
 ---
 
-## 📋 Documentation Structure
+## 📋 ドキュメント構成
 
-### Requirements, Design, and Implementation Documents
+| ドキュメント | 内容 |
+|------------|------|
+| [requirements.md](requirements.md) | 要件定義・トレードオフ分析 |
+| [architecture.md](architecture.md) | システム設計・アーキテクチャ図 |
+| [deployment.md](deployment.md) | デプロイ戦略・Docker Compose設定 |
+| [operations.md](operations.md) | 運用設計・監視・バックアップ |
 
-| Document | Content | Status |
-|----------|---------|--------|
-| Requirements Document | System requirements and objectives | ✅ Complete |
-| Design Document | System architecture and design | ✅ Complete |
-| Installation Guide | Setup procedures | ✅ Complete |
-| Migration Guide | Migration procedures | ✅ Complete |
-| Testing Plan | Test planning | 📝 Planned |
+---
+
+## 🛠️ 技術スタック
+
+| カテゴリ | 技術 |
+|---------|------|
+| **構築環境** | Rocky Linux 9.6 |
+| **コンテナ** | Docker, Docker Compose |
+| **Web** | Nginx, WordPress, PHP-FPM |
+| **DB** | MariaDB 10.11 |
+| **Cache** | Redis |
+| **クラウド** | Cloudflare (Tunnel, CDN, WAF) |
+| **メール** | WP Mail SMTP + SendGrid |
 
 ---
 

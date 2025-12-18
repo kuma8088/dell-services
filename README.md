@@ -702,8 +702,7 @@ cd services/mailserver/scripts
 - [インフラ構築](docs/infra/README.md)
 - [Mailserver](docs/application/mailserver/README.md)
 - [Blog System](docs/application/blog/README.md)
-- [Unified Portal](services/unified-portal/README.md)
-- [トラブルシューティング](services/mailserver/troubleshoot/README.md)
+- [Unified Portal](docs/application/unified-portal/README.md)
 
 ---
 

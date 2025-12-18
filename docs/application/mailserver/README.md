@@ -1,14 +1,37 @@
 # メールサーバー構築プロジェクト
 
-**プロジェクト概要**: Xserver WEBメール機能相当のメールサーバーをDocker Compose環境で構築
+**作成者**: kuma8088（AWS認定ソリューションアーキテクト、ITストラテジスト）
 
-**構築環境**: Rocky Linux 9.6
-
-**構築方式**: Docker Compose
+Xserver WEBメール機能相当のメールサーバーをDocker Compose環境で構築・運用するプロジェクトドキュメント
 
 ---
 
-## 📚 ドキュメント一覧
+## 📋 ドキュメント構成
+
+| ドキュメント | 内容 |
+|------------|------|
+| [requirements.md](requirements.md) | 要件定義・トレードオフ分析 |
+| [architecture.md](architecture.md) | システム設計・アーキテクチャ図 |
+| [deployment.md](deployment.md) | デプロイ戦略・Docker/Terraform |
+| [operations.md](operations.md) | 運用設計・監視・バックアップ |
+
+---
+
+## 🛠️ 技術スタック
+
+| カテゴリ | 技術 |
+|---------|------|
+| **構築環境** | Rocky Linux 9.6 |
+| **コンテナ** | Docker, Docker Compose |
+| **IaC** | Terraform |
+| **クラウド** | AWS (S3, CloudWatch, SNS), Cloudflare (Tunnel, Email Routing) |
+| **メール** | Postfix, Dovecot, Rspamd, ClamAV, Roundcube |
+| **DB** | MariaDB |
+| **Backend** | Python (Flask, FastAPI) |
+
+---
+
+## 📚 詳細ドキュメント一覧
 
 ### 1. 要件定義書
 - プロジェクト概要と目的
