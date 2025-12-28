@@ -23,6 +23,10 @@
 
 ## アーキテクチャ
 
+### 全体構成図
+
+![Dell Services Architecture](./architecture.svg)
+
 ### メールサーバー
 
 ```

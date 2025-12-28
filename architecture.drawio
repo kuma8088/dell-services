@@ -1,0 +1,256 @@
+<mxfile host="65bd71144e">
+    <diagram name="Dell Services Architecture" id="0">
+        <mxGraphModel dx="1260" dy="1162" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="ws-group" value="Local Workstation (Rocky Linux 9.6)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#2E7D32;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontSize=14;fontStyle=1;fontColor=#2E7D32;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="399" width="1110" height="410" as="geometry"/>
+                </mxCell>
+                <mxCell id="storage-group" value="Storage" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ECEFF1;strokeColor=#607D8B;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;fontStyle=1;fontColor=#607D8B;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="490" width="1090" height="309" as="geometry"/>
+                </mxCell>
+                <mxCell id="mail-group" value="Mail System (9 Containers)" style="rounded=0;whiteSpace=wrap;html=1;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;fontStyle=1;strokeColor=#FF3333;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="337" y="520" width="350" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="internet" value="Internet" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="1" vertex="1">
+                    <mxGeometry x="20" y="49" width="500" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="title" value="自前Xserver環境システム（WP＋メールサーバー）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="500" y="19" width="500" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="cf-group" value="Cloudflare" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#F38020;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontSize=14;fontStyle=1;fontColor=#F38020;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="159" width="520" height="180" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#F3801F;strokeWidth=2;" edge="1" parent="1" source="cf-cdn" target="cf-tunnel">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="cf-cdn" value="CDN / WAF&#xa;DDoS Protection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F38020;strokeColor=#F38020;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="199" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="16" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;strokeColor=#F3801F;strokeWidth=2;" edge="1" parent="1" source="cf-tunnel" target="cloudflared">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="18" value="Outbound Only&lt;div&gt;(Cloudflare Tunnel/cloudflared)&lt;/div&gt;&lt;div&gt;ポート解放不要&lt;/div&gt;&lt;div&gt;固定IP不要&lt;/div&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="16">
+                    <mxGeometry x="-0.0877" y="1" relative="1" as="geometry">
+                        <mxPoint x="-1" y="-8" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cf-tunnel" value="Cloudflare&#xa;Tunnel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F38020;strokeColor=#F38020;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="200" y="279" width="220" height="46" as="geometry"/>
+                </mxCell>
+                <mxCell id="cf-email-routing" value="Email&#xa;Routing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F38020;strokeColor=#F38020;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="199" width="100" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="13" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#F3801F;strokeWidth=2;" edge="1" parent="1" source="cf-email-worker" target="cf-tunnel">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" value="LMTP" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="13">
+                    <mxGeometry x="0.292" y="-2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cf-email-worker" value="Email&#xa;Worker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F38020;strokeColor=#F38020;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="440" y="199" width="100" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="cf-dns" value="DNS (Anycast)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F38020;strokeColor=#F38020;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="190" y="204" width="120" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="tailscale" value="Tailscale VPN&#xa;(WireGuard)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4A5568;strokeColor=#4A5568;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="630" y="239" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="devices" value="ユーザ端末&lt;br&gt;MacBook / iPhone / PC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2E8F0;strokeColor=#4A5568;" parent="1" vertex="1">
+                    <mxGeometry x="620" y="109" width="140" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="external-group" value="External Services" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#666666;strokeWidth=2;strokeDashArray=8 8;verticalAlign=top;align=left;spacingLeft=10;fontSize=14;fontStyle=1;fontColor=#666666;" parent="1" vertex="1">
+                    <mxGeometry x="910" y="159" width="230" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="sendgrid" value="SendGrid&#xa;(SMTP Relay)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1A82E2;strokeColor=#1A82E2;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="940" y="199" width="170" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="aws-s3" value="AWS S3&#xa;Object Lock" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#3F8624;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.bucket;" parent="1" vertex="1">
+                    <mxGeometry x="940" y="269" width="50" height="52" as="geometry"/>
+                </mxCell>
+                <mxCell id="aws-cw" value="CloudWatch" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#E7157B;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.cloudwatch;" parent="1" vertex="1">
+                    <mxGeometry x="1050" y="269" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="17" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;rounded=0;curved=0;strokeColor=#FF3333;" edge="1" parent="1" source="cloudflared" target="mail-api">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="370" y="548" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="19" value="LMTP" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="17">
+                    <mxGeometry x="-0.0698" y="-3" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="cloudflared" value="cloudflared&#xa;(Tunnel Client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F38020;strokeColor=#F38020;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="250" y="429" width="120" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="blog-group" value="Blog System (17 Sites)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#1976D2;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;fontStyle=1;fontColor=#1976D2;" parent="1" vertex="1">
+                    <mxGeometry x="60" y="520" width="230" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="nginx" value="Nginx&#xa;(17 VHosts)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050ef;strokeColor=#001DBC;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="560" width="80" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="wordpress" value="WordPress&#xa;PHP-FPM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050ef;strokeColor=#001DBC;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="560" width="80" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="mariadb-blog" value="MariaDB&#xa;(17 DBs)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#003545;strokeColor=#003545;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="700" width="80" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="mail-api" value="Mail API&#xa;(FastAPI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e51400;strokeColor=#B20000;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="357" y="551" width="80" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="postfix" value="Postfix&#xa;(SMTP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e51400;fontColor=#ffffff;strokeColor=#B20000;" parent="1" vertex="1">
+                    <mxGeometry x="577" y="550" width="80" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="dovecot" value="Dovecot&#xa;(IMAP/POP3)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e51400;fontColor=#ffffff;strokeColor=#B20000;" parent="1" vertex="1">
+                    <mxGeometry x="462" y="551" width="90" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="roundcube" value="Roundcube&#xa;(Webmail)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bac8d3;strokeColor=#23445d;" parent="1" vertex="1">
+                    <mxGeometry x="577" y="626" width="80" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="rspamd" value="Rspamd&lt;br&gt;(スパム)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#647687;strokeColor=#314354;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="357" y="626" width="80" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="clamav" value="ClamAV&lt;br&gt;(ウィルス)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#647687;strokeColor=#314354;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="462" y="626" width="85" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="usermgmt" value="Admin&lt;div&gt;&lt;font style=&quot;color: rgb(255, 255, 255);&quot;&gt;(Flask)&lt;/font&gt;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#009688;strokeColor=#00796B;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="577" y="697.5" width="80" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="mariadb-mail" value="MariaDB&lt;br&gt;(ユーザ認証)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#003545;strokeColor=#003545;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="467" y="690" width="80" height="65" as="geometry"/>
+                </mxCell>
+                <mxCell id="portal-group" value="管理ポータル" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#7B1FA2;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;fontSize=12;fontStyle=1;fontColor=#7B1FA2;" parent="1" vertex="1">
+                    <mxGeometry x="700" y="520" width="140" height="260" as="geometry"/>
+                </mxCell>
+                <mxCell id="frontend" value="Frontend&#xa;(React + TS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6a00ff;strokeColor=#3700CC;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="551" width="90" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="backend" value="Backend&#xa;(FastAPI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6a00ff;strokeColor=#3700CC;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="625" width="90" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="ssd" value="SSD 390GB&#xa;OS / DB / Logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#607D8B;strokeColor=#455A64;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="860" y="521" width="100" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="29" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="hdd" target="backup-local">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="hdd" value="HDD 3.6TB&#xa;Mail / Blog Data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#607D8B;strokeColor=#455A64;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="860" y="579" width="100" height="200" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="backup-local" target="aws-s3">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="backup-local" value="Local Backup&#xa;(Daily/Weekly)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#78909C;strokeColor=#546E7A;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="985" y="579" width="120" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="security-label" value="Security Layers: DDoS Protection → WAF → Tunnel → Rspamd/ClamAV → Object Lock" style="text;html=1;strokeColor=none;fillColor=#FFEBEE;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=1;fontSize=11;fontColor=#C62828;" parent="1" vertex="1">
+                    <mxGeometry x="510" y="59" width="480" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F38020;" parent="1" source="cf-email-routing" target="cf-email-worker" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0000CC;" parent="1" source="cloudflared" target="nginx" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e8" value="WireGuard" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4A5568;strokeWidth=2;" parent="1" source="devices" target="tailscale" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e9" value="IMAP&lt;div&gt;受信メール確認&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4A5568;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="tailscale" target="dovecot" edge="1">
+                    <mxGeometry x="-0.1371" relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="600" y="269"/>
+                            <mxPoint x="600" y="369"/>
+                            <mxPoint x="507" y="369"/>
+                        </Array>
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1976D2;" parent="1" source="nginx" target="wordpress" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1976D2;" parent="1" source="redis" target="mariadb-blog" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#D82C20;dashed=1;" parent="1" source="wordpress" target="redis" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#FF9800;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;dashed=1;" parent="1" source="mail-api" target="dovecot" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="397" y="650"/>
+                            <mxPoint x="507" y="650"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e17" value="SMTP Relay" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1A82E2;strokeWidth=2;exitX=0.75;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="postfix" target="sendgrid" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="637" y="469"/>
+                            <mxPoint x="700" y="469"/>
+                            <mxPoint x="700" y="359"/>
+                            <mxPoint x="850" y="359"/>
+                            <mxPoint x="850" y="224"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7B1FA2;" parent="1" source="frontend" target="backend" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" style="edgeStyle=none;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="2" target="cf-email-routing">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="10" value="受信メール&lt;div&gt;SMTP&lt;/div&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="9">
+                    <mxGeometry x="-0.0151" y="2" relative="1" as="geometry">
+                        <mxPoint x="-2" y="-13" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="2" value="" style="points=[];aspect=fixed;html=1;align=center;shadow=0;dashed=0;fillColor=#FF6A00;strokeColor=none;shape=mxgraph.alibaba_cloud.directmail;" vertex="1" parent="1">
+                    <mxGeometry x="343.75" y="71.6" width="52.5" height="34.8" as="geometry"/>
+                </mxCell>
+                <mxCell id="7" style="edgeStyle=none;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="3" target="cf-cdn">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="サイト閲覧&lt;div&gt;HTTPS&lt;/div&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="7">
+                    <mxGeometry x="-0.0667" y="-3" relative="1" as="geometry">
+                        <mxPoint x="3" y="-12" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="3" value="" style="points=[];aspect=fixed;html=1;align=center;shadow=0;dashed=0;fillColor=#FF6A00;strokeColor=none;shape=mxgraph.alibaba_cloud.user;" vertex="1" parent="1">
+                    <mxGeometry x="100" y="69" width="40" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="23" value="SMTP&lt;div&gt;メール送信&lt;/div&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4A5568;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="tailscale" target="postfix">
+                    <mxGeometry x="-0.361" relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="690" y="319"/>
+                            <mxPoint x="650" y="319"/>
+                            <mxPoint x="650" y="429"/>
+                            <mxPoint x="617" y="429"/>
+                        </Array>
+                        <mxPoint x="650" y="239" as="sourcePoint"/>
+                        <mxPoint x="500" y="550" as="targetPoint"/>
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="26" value="" style="outlineConnect=0;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;shape=mxgraph.aws3.mobile_client;fillColor=#D2D3D3;gradientColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="760" y="106" width="30.5" height="53" as="geometry"/>
+                </mxCell>
+                <mxCell id="27" value="" style="points=[];aspect=fixed;html=1;align=center;shadow=0;dashed=0;fillColor=#0000CC;strokeColor=none;shape=mxgraph.alibaba_cloud.directmail;" vertex="1" parent="1">
+                    <mxGeometry x="1050" y="164.2" width="52.5" height="34.8" as="geometry"/>
+                </mxCell>
+                <mxCell id="28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1976D2;" edge="1" parent="1" source="wordpress" target="redis">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="220" y="610" as="sourcePoint"/>
+                        <mxPoint x="220" y="700" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="redis" value="Redis&#xa;Cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050ef;strokeColor=#001DBC;fontColor=#ffffff;" parent="1" vertex="1">
+                    <mxGeometry x="180" y="629" width="80" height="50" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
