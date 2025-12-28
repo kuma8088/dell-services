@@ -250,6 +250,9 @@
                 <mxCell id="redis" value="Redis&#xa;Cache" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0050ef;strokeColor=#001DBC;fontColor=#ffffff;" parent="1" vertex="1">
                     <mxGeometry x="180" y="629" width="80" height="50" as="geometry"/>
                 </mxCell>
+                <mxCell id="31" value="&lt;b&gt;管理対象&lt;/b&gt;&lt;div&gt;Cloudflare DNS&lt;/div&gt;&lt;div&gt;Dockerコンテナ&lt;/div&gt;&lt;div&gt;MariaDB&lt;/div&gt;&lt;div&gt;WordPress&lt;/div&gt;&lt;div&gt;メールアドレス&lt;/div&gt;" style="text;strokeColor=none;align=center;fillColor=none;html=1;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="705" y="678" width="120" height="101" as="geometry"/>
+                </mxCell>
             </root>
         </mxGraphModel>
     </diagram>
