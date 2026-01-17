@@ -51,7 +51,7 @@ async def receive_inbound_mail(email: InboundEmail, x_api_key: str = Header(None
     )
 
     try:
-        with smtplib.LMTP(LMTP_HOST, LMTP_PORT, timeout=30) as lmtp:
+        with smtplib.LMTP(LMTP_HOST, LMTP_PORT, timeout=30, local_hostname="mailserver-api.local") as lmtp:
             # LMTP expects a per-recipient response, but we only send to one address
             lmtp.sendmail(email.from_addr, [email.to], email.raw.encode("utf-8"))
         logger.info("LMTP delivery succeeded for %s", email.to)
