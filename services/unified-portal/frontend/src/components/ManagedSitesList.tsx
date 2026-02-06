@@ -12,7 +12,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react'
-import { managedSitesAPI, type ManagedWordPressSite } from '@/lib/api'
+import { managedSitesAPI, type ManagedWordPressSite, type DNSResolveStatus } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -51,6 +51,48 @@ function getRootDomain(domain: string): string {
     return parts.slice(-2).join('.')
   }
   return domain
+}
+
+const DNS_CHECK_WINDOW_MS = 10 * 60 * 1000 // 10分
+
+function SiteDomainLink({ site }: { site: ManagedWordPressSite }) {
+  const createdAt = new Date(site.created_at).getTime()
+  const isRecent = Date.now() - createdAt < DNS_CHECK_WINDOW_MS
+
+  const { data: dnsStatus } = useQuery<DNSResolveStatus>({
+    queryKey: ['dns-status', site.id],
+    queryFn: () => managedSitesAPI.checkDnsStatus(site.id),
+    enabled: isRecent,
+    refetchInterval: (query) => {
+      if (query.state.data?.resolved) return false
+      return 5000
+    },
+  })
+
+  const dnsResolved = !isRecent || dnsStatus?.resolved
+
+  if (!dnsResolved) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-sm text-gray-500">
+        {site.domain}
+        <Badge variant="outline" className="text-xs font-normal text-amber-600 border-amber-300">
+          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+          DNS反映待ち...
+        </Badge>
+      </span>
+    )
+  }
+
+  return (
+    <a
+      href={`https://${site.domain}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-sm text-blue-600 hover:underline"
+    >
+      {site.domain}
+    </a>
+  )
 }
 
 export default function ManagedSitesList({ searchQuery }: ManagedSitesListProps) {
@@ -233,14 +275,7 @@ export default function ManagedSitesList({ searchQuery }: ManagedSitesListProps)
                             {site.enabled ? '有効' : '無効'}
                           </Badge>
                         </div>
-                        <a
-                          href={`https://${site.domain}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:underline"
-                        >
-                          {site.domain}
-                        </a>
+                        <SiteDomainLink site={site} />
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
