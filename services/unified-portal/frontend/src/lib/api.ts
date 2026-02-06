@@ -377,6 +377,13 @@ export interface CacheControlRequest {
   cache_type: 'all' | 'redis' | 'transients' | 'rewrite'
 }
 
+export interface DNSResolveStatus {
+  domain: string
+  resolved: boolean
+  ip_addresses: string[]
+  checked_at: string
+}
+
 // ============================================================================
 // Managed WordPress Sites API Functions
 // ============================================================================
@@ -442,6 +449,12 @@ export const managedSitesAPI = {
         body: JSON.stringify(cacheType),
       }
     ),
+
+  /**
+   * Check DNS resolution status for a managed site
+   */
+  checkDnsStatus: (siteId: number) =>
+    apiFetch<DNSResolveStatus>(`/api/v1/wordpress/managed-sites/${siteId}/dns-status`),
 }
 
 // ============================================================================

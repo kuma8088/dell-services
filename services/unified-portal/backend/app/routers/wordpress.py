@@ -7,11 +7,13 @@ Provides two types of operations:
 """
 
 from typing import List, Optional
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import subprocess
 import json
+import httpx
 
 from app.auth import get_current_user, get_current_user_optional
 from app.database import get_db
@@ -106,6 +108,54 @@ class WordPressStats(BaseModel):
     sites_online: int
     total_plugins: int
     redis_enabled_sites: int
+
+
+class DNSResolveStatus(BaseModel):
+    """DNS resolution status for a domain."""
+    domain: str
+    resolved: bool
+    ip_addresses: List[str]
+    checked_at: str
+
+
+async def _check_dns_resolution(domain: str) -> DNSResolveStatus:
+    """Check if a domain resolves via DNS-over-HTTPS (Google DNS).
+
+    Uses the same DNS-over-HTTPS pattern as domains.py but simplified
+    to only check A record resolution via Google DNS.
+
+    Args:
+        domain: The domain to check DNS resolution for.
+
+    Returns:
+        DNSResolveStatus with resolution result.
+    """
+    ip_addresses: List[str] = []
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                "https://dns.google/resolve",
+                params={"name": domain, "type": "A"},
+                headers={"Accept": "application/dns-json"},
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if "Answer" in data:
+                    for answer in data["Answer"]:
+                        # Type 1 = A record
+                        if answer.get("type") == 1:
+                            ip_addresses.append(answer.get("data", ""))
+    except (httpx.TimeoutException, httpx.RequestError):
+        pass
+
+    return DNSResolveStatus(
+        domain=domain,
+        resolved=len(ip_addresses) > 0,
+        ip_addresses=ip_addresses,
+        checked_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 # Helper Functions
@@ -640,3 +690,40 @@ def clear_managed_site_cache(
         return {"success": True, "message": f"{cache_control.cache_type} cache cleared"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get(
+    "/managed-sites/{site_id}/dns-status",
+    response_model=DNSResolveStatus,
+)
+async def check_managed_site_dns_status(
+    site_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[str] = Depends(get_current_user_optional),
+):
+    """Check DNS resolution status for a managed WordPress site.
+
+    Used by the frontend to determine if a newly created site's domain
+    has propagated in DNS. Until DNS resolves, the site link is disabled
+    to prevent DNS_PROBE_POSSIBLE errors and negative DNS caching.
+
+    Args:
+        site_id: Site ID
+        db: Database session
+        current_user: Optional current authenticated user
+
+    Returns:
+        DNS resolution status including resolved IPs
+
+    Raises:
+        HTTPException: If site not found
+    """
+    service = get_wordpress_service(db)
+    site = service.get_site(site_id)
+
+    if not site:
+        raise HTTPException(
+            status_code=404, detail=f"Site with ID {site_id} not found"
+        )
+
+    return await _check_dns_resolution(site.domain)
