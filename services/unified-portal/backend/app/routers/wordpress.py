@@ -119,10 +119,12 @@ class DNSResolveStatus(BaseModel):
 
 
 async def _check_dns_resolution(domain: str) -> DNSResolveStatus:
-    """Check if a domain resolves via DNS-over-HTTPS (Google DNS).
+    """Check if a domain resolves via DNS-over-HTTPS.
 
-    Uses the same DNS-over-HTTPS pattern as domains.py but simplified
-    to only check A record resolution via Google DNS.
+    Queries both Cloudflare DNS and Google DNS. Returns resolved=True
+    if either server returns A records. Cloudflare DNS is checked first
+    because it reflects Cloudflare-managed zone changes faster than
+    Google DNS, which may hold NXDOMAIN negative cache for up to 30min.
 
     Args:
         domain: The domain to check DNS resolution for.
@@ -130,23 +132,33 @@ async def _check_dns_resolution(domain: str) -> DNSResolveStatus:
     Returns:
         DNSResolveStatus with resolution result.
     """
+    dns_servers = [
+        ("https://cloudflare-dns.com/dns-query", "application/dns-json"),
+        ("https://dns.google/resolve", "application/dns-json"),
+    ]
     ip_addresses: List[str] = []
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
-                "https://dns.google/resolve",
-                params={"name": domain, "type": "A"},
-                headers={"Accept": "application/dns-json"},
-            )
+            for server_url, accept_header in dns_servers:
+                response = await client.get(
+                    server_url,
+                    params={"name": domain, "type": "A"},
+                    headers={"Accept": accept_header},
+                )
 
-            if response.status_code == 200:
-                data = response.json()
-                if "Answer" in data:
-                    for answer in data["Answer"]:
-                        # Type 1 = A record
-                        if answer.get("type") == 1:
-                            ip_addresses.append(answer.get("data", ""))
+                if response.status_code == 200:
+                    data = response.json()
+                    if "Answer" in data:
+                        for answer in data["Answer"]:
+                            # Type 1 = A record
+                            if answer.get("type") == 1:
+                                ip = answer.get("data", "")
+                                if ip and ip not in ip_addresses:
+                                    ip_addresses.append(ip)
+
+                if ip_addresses:
+                    break  # Resolved on first server, skip remaining
     except (httpx.TimeoutException, httpx.RequestError):
         pass
 

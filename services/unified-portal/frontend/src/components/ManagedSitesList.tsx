@@ -56,7 +56,11 @@ function getRootDomain(domain: string): string {
 const DNS_CHECK_WINDOW_MS = 10 * 60 * 1000 // 10分
 
 function SiteDomainLink({ site }: { site: ManagedWordPressSite }) {
-  const createdAt = new Date(site.created_at).getTime()
+  // Backend returns UTC datetime without 'Z' suffix (e.g., "2026-02-07T01:10:11").
+  // Without 'Z', JavaScript parses it as local time, causing a timezone offset
+  // (9 hours in JST) that makes isRecent always false.
+  const createdAtStr = site.created_at.endsWith('Z') ? site.created_at : site.created_at + 'Z'
+  const createdAt = new Date(createdAtStr).getTime()
   const isRecent = Date.now() - createdAt < DNS_CHECK_WINDOW_MS
 
   const { data: dnsStatus } = useQuery<DNSResolveStatus>({
