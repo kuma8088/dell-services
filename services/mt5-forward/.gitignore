@@ -1,0 +1,8 @@
+# broker 認証・実行時データは絶対にコミットしない
+.env
+.env.*
+config/*.ini
+data/
+MQL5/Files/
+MQL5/Logs/
+*.ex5
