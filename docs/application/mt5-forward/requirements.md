@@ -29,6 +29,8 @@ MT5** でフォワードテスト（TitanFX デモ口座）している。この
 1. **24時間常駐**: 常時起動の Dell 上でEAを動かし、母艦スリープ起因の機会損失をゼロにする
 2. **Mac から閲覧**: チャート・建玉・フォワード成績を Mac から確認できる（後述の二系統）
 3. **成績の自動還流**: EAが出力する取引CSV/ログを Mac（git）側で読める形に同期する
+4. **複数検証の並列運用（重要）**: 戦略・パラメータ違いを**独立した検証トラックとして同時に**回せる。
+   初版は tentei-himo 単一で立ち上げるが、**設計は最初から N トラックへ水平拡張できる**こと（後述 §2.1）
 
 > 注: EA 側の堅牢化（再接続時の gap-fill 全バー復旧 = "D1a"）は **EdgeVault 投資部門側で別途実施**し、
 > 凍結済み `.ex5` として本サービスに引き渡す。本サービスの責務は「EAを正しく常駐実行する器」。
@@ -37,21 +39,40 @@ MT5** でフォワードテスト（TitanFX デモ口座）している。この
 
 ## 2. 想定アーキテクチャ（推奨。最終判断は Dell 側）
 
+### 2.1 基本単位 = 「1検証トラック = 1コンテナ = 1デモ口座」
+
+MT5 は **1端末が同時にログインできる口座は1つ**（口座切替＝前口座から切断）。よって複数検証を
+**並列・独立**に回す唯一クリーンな方法は端末を分けること = **Docker コンテナを分けること**。
+本サービスは「トラックをパラメータで定義し、N コンテナを起動する」テンプレ構成とする。
+
 ```
 Dell (Rocky 9.6, 常時起動)
-└─ Docker: mt5-forward サービス
-     ├─ MT5 端末 (Wine) ← TitanFX デモ口座に master ログイン
-     │    ├─ Experts/   : TenteiHimo_Live.ex5（master=自動売買 ON）
-     │    └─ Indicators/: TenteiHimo_Signals.ex5（チャート可視化）
-     ├─ noVNC (ブラウザ) ← Tailscale 経由で Mac から GUI 閲覧
-     └─ volume: MQL5/Files/（取引CSV）, Logs/（Experts ログ） を host にマウント
-           └─ host 側 cron/timer が git commit/push → Mac は git pull
+└─ Docker: mt5-forward （トラックごとに1コンテナ）
+   ├─ mt5-tentei-himo   ← デモ口座#1, TenteiHimo_Live.ex5,  magic=26060801, 出力 data/tentei-himo/
+   ├─ mt5-wemof         ← デモ口座#2, Wemof EA,             magic=…,        出力 data/wemof/
+   └─ mt5-himo-variantB ← デモ口座#3, パラメータ違い,        magic=…,        出力 data/himo-variantB/
+        各コンテナ共通:
+          ├─ MT5 端末 (Wine) ← 各自のデモ口座に master ログイン
+          │    ├─ Experts/    : <strategy>.ex5（master=自動売買 ON）
+          │    └─ Indicators/ : TenteiHimo_Signals.ex5（可視化・任意）
+          ├─ noVNC (ブラウザ) ← Tailscale 経由で Mac から GUI 閲覧（トラックごとに別ポート）
+          └─ volume: MQL5/Files/(取引CSV), Logs/ を host の data/<track>/ にマウント
+               └─ host 側 cron/timer が git commit/push → Mac は git pull
 ```
 
-**実証済みパターン**: EA は **純 MQL5（Python 依存なし）**。Wine + Xvfb + noVNC で MT5 を
-ブラウザ操作する Docker イメージは確立されており、MQL5-only bot 用途では
-`gmag11/MetaTrader5-Docker`（`metatrader5_vnc` 系）が定番。これをベースにするか自前 Dockerfile に
-するかは Dell 側判断。出典は README 参照。
+各コンテナは**資金曲線・建玉・記録・障害が完全に独立**。1トラックのDDが他に影響せず、性能比較が公平。
+
+### 2.2 トラック内の複数通貨は同居でよい
+
+「同一戦略を7通貨で」のような場合は**1トラック（1口座・1コンテナ）内に複数チャート**で足りる
+（口座を増やす必要はない）。同口座内の複数EA/通貨は **symbol + magic number** で記録・管理を分離する。
+TitanFX デモは **hedging**（同一通貨で複数建玉可・観測済み）なので、L3ラダーも複数EAも共存できる。
+
+### 2.3 実証済みパターン
+
+EA は **純 MQL5（Python 依存なし）**。Wine + Xvfb + noVNC で MT5 をブラウザ操作する Docker
+イメージは確立されており、MQL5-only bot 用途では `gmag11/MetaTrader5-Docker`（`metatrader5_vnc` 系）が
+定番。これをベースにするか自前 Dockerfile にするかは Dell 側判断。出典は README 参照。
 
 ---
 
@@ -66,6 +87,9 @@ Dell (Rocky 9.6, 常時起動)
 | MT-005 | 上記CSV/ログを Mac から読める形に同期する（git commit/push 推奨。rsync over Tailscale も可） | 必須 | 「移行先の成績を Mac で確認」を満たす。EdgeVault の "Dell が書く→Mac が git pull" 既存運用に整合 |
 | MT-006 | ブラウザ(noVNC) で MT5 GUI を Tailscale 経由で閲覧できる | 必須 | Mac からチャート・建玉をリアルタイム確認（投資家パスワード方式の代替/併用） |
 | MT-007 | EA・インジの `.ex5` 差し替え（バージョン更新）が再ビルドなしの volume 差し替え + 再起動で可能 | 推奨 | EA は EdgeVault 側で更新され凍結受け渡しされるため |
+| MT-008 | **検証トラックをパラメータ（口座情報・EAセット・magic・noVNCポート・出力先）で定義し、追加トラックはコンテナを1つ増やすだけで起動できる** | 必須 | 複数検証の並列運用（目的4）。初版は1トラックでも、設計は N トラック前提 |
+| MT-009 | トラックごとに出力先を分離する（例 `data/<track>/himo_live_trades.csv`）。トラック間でCSV/ログが混ざらない | 必須 | 検証ごとの成績を独立に照合するため |
+| MT-010 | 同一口座内に複数EA/通貨を同居させる場合、各注文は magic number + symbol で分離される | 必須 | パターンA（1戦略・多通貨）を1コンテナで扱うため |
 
 ---
 
@@ -100,9 +124,9 @@ Dell (Rocky 9.6, 常時起動)
 
 | 成果物 | 形式 | 同期先 |
 |-------|------|--------|
-| `himo_live_trades.csv` | 取引記録（signal_time/dir/entry/real_pips/shadow_pips/exit_reason 等） | git or rsync → Mac が取得し投資部門が照合 |
-| Experts ログ | `MISSED_OUTAGE` / `GAP_FILL` / `ENTRY` / `SKIP` 等 | 同上。outage 可視化に必須 |
-| （任意）日次サマリ | markdown/HTML 自動生成 | あると Mac 側確認が楽 |
+| `data/<track>/himo_live_trades.csv` | 取引記録（signal_time/dir/entry/real_pips/shadow_pips/exit_reason 等）。**トラックごとに分離** | git or rsync → Mac が取得し投資部門が照合 |
+| `data/<track>/Logs/` | Experts ログ（`MISSED_OUTAGE` / `GAP_FILL` / `ENTRY` / `SKIP` 等） | 同上。outage 可視化に必須 |
+| （任意）日次サマリ | トラック別 markdown/HTML 自動生成 | あると Mac 側確認が楽 |
 
 ### 5.3 Mac からの閲覧（二系統）
 
@@ -130,11 +154,19 @@ Dell (Rocky 9.6, 常時起動)
 4. **成績同期の方式**: git push（推奨・既存運用に整合）か rsync over Tailscale か。push 先リポジトリ/認証
 5. **MT5自動起動の永続化**: チャートプロファイル + `config/*.ini` でEA自動アタッチをどう固定するか
 6. **監視**: コンテナ death / EA detach / broker 切断の検知（healthcheck・通知）をどこまで作るか
+7. **トラック定義の持ち方**: compose の複数サービスで列挙するか、`tracks/<name>.env` 的なテンプレ + 生成スクリプトにするか（MT-008 の実現方式）
+8. **デモ口座の払い出し**: トラックごとに **TitanFX デモ口座を個別に発行**する運用（口座番号・master/investor パスワードの管理方法）。初版1口座、増設時に追加発行
 
 ---
 
-## 8. スコープ外
+## 8. スコープ
 
+### 初版で動かす範囲
+- **tentei-himo 単一トラック**（デモ口座1つ）で常駐・閲覧・成績還流まで通す
+
+### 初版から設計に織り込む範囲（実装は後でも、設計は今）
+- **N トラックへの水平拡張**（MT-008/009/010）。トラック追加がコンテナ追加だけで済む構造にしておく
+
+### スコープ外
 - EA のロジック改変・最適化（投資部門のステージゲート管轄。Dell は実行環境のみ）
 - 実弾（リアルマネー）運用（現段階はデモのフォワード検証のみ。実弾はステージゲート通過後に別途判断）
-- 複数戦略・複数口座の同時運用（将来拡張。本要件は tentei-himo 単一で可）

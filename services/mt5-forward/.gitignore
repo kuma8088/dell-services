@@ -6,3 +6,4 @@ data/
 MQL5/Files/
 MQL5/Logs/
 *.ex5
+tracks/*.env
