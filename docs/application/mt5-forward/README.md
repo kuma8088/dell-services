@@ -9,9 +9,13 @@ TitanFX デモ口座でフォワードテストを継続するサービス。母
 | ファイル | 内容 | 状態 |
 |---------|------|------|
 | [requirements.md](./requirements.md) | 要件定義（EdgeVault 投資部門から提示） | ✅ 提示済み |
-| architecture.md | 構成設計（コンテナ構成・ネットワーク・volume） | ⬜ Dell 側で作成 |
-| deployment.md | デプロイ手順（イメージ・compose・自動起動・secret） | ⬜ Dell 側で作成 |
-| operations.md | 運用（監視・EA差し替え・成績同期・障害対応） | ⬜ Dell 側で作成 |
+| [architecture.md](./architecture.md) | 構成設計（コンテナ構成・ネットワーク・volume） | ✅ 設計（レビュー反映済み） |
+| [deployment.md](./deployment.md) | デプロイ手順（イメージ・compose・自動起動・secret） | ✅ 設計（レビュー反映済み） |
+| [operations.md](./operations.md) | 運用（監視・EA差し替え・成績同期・障害対応） | ✅ 設計（レビュー反映済み） |
+
+> ✅ **成績還流方式 確定（O.Q.4 = (a) 成績専用リポ, 2026-06-20）**: `data/` を本リポでは追跡せず、別の
+> 成績専用リポへ push する（[deployment.md §8](./deployment.md)）。設計のブロッカーは解消済み。
+> 起動に残る外部依存は 🟡 **EA `.ex5`(v0.6) / TitanFX デモ口座 / 成績専用リポの URL・認証** の払い出し。
 
 ## 位置づけ
 

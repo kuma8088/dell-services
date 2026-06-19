@@ -7,3 +7,9 @@ MQL5/Files/
 MQL5/Logs/
 *.ex5
 tracks/*.env
+secrets/
+artifacts/
+
+# 例示・雛形は追跡する（実体は上記で除外）
+!tracks/*.env.example
+!**/.gitkeep

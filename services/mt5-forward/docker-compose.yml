@@ -1,0 +1,65 @@
+# mt5-forward — MT5 フォワードトレード常駐ホスト
+#
+# 設計: docs/application/mt5-forward/{architecture,deployment,operations}.md
+# Network: 172.23.0.0/24（実測の使用中サブネット 172.17-20/22 と非衝突。172.21/23 は空き）
+#
+# ⚠️ 未テスト雛形: ベースイメージ取得・凍結 .ex5・TitanFX デモ口座が揃うまで実起動できない。
+#    Tailnet 公開は本ファイル単体では完結せず、host 側で `tailscale serve --bg localhost:300x` が必須
+#    （127.0.0.1 束縛のみでは Tailscale 経由でも到達不可。deployment.md §7.1 参照）。
+
+networks:
+  mt5_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.23.0.0/24
+          gateway: 172.23.0.1
+
+secrets:
+  titanfx_demo1_password:
+    file: ./secrets/titanfx_demo1_password
+
+# 全トラック共通定義（差分のみ各サービスで上書き, MT-008）
+x-track-base: &track-base
+  build: .
+  image: mt5-forward:local
+  restart: always                 # MT-001: 再起動後 自動復帰
+  networks: [mt5_network]
+  deploy:                          # NF-003
+    resources:
+      limits:   { cpus: '2.0', memory: 2G }
+      reservations: { cpus: '1.0', memory: 1G }
+  logging:                         # NF-004
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+  healthcheck:                     # 監視（軽量, O.Q.6）
+    test: ["CMD-SHELL", "pgrep -f terminal64.exe || exit 1"]
+    interval: 60s
+    timeout: 10s
+    retries: 3
+    start_period: 360s             # MT5 初回インストール ~5分 を考慮し 6分確保（初回中の誤unhealthy回避）
+
+services:
+  mt5-tentei-himo:
+    <<: *track-base
+    container_name: mt5-tentei-himo
+    env_file: ./tracks/tentei-himo.env
+    ports:
+      - "127.0.0.1:3001:3000"      # localhost束縛のみ。Tailnet公開は `tailscale serve --bg localhost:3001`（deployment.md §7.1）
+    volumes:
+      - ./tracks/tentei-himo/config:/config        # MT5 プロファイル永続化 (MT-001/005/007)
+      - ./artifacts/tentei-himo:/artifacts:ro       # 凍結 .ex5 / .tpl, read-only (MT-007)
+      - ./data/tentei-himo:/output                  # 取引CSV/ログの host 還流先 (MT-004/009)
+    secrets: [titanfx_demo1_password]
+
+  # === 追加トラックはこのブロックを複製し env/port/volume/secret を差し替えるだけ (MT-008) ===
+  # mt5-<track2>:
+  #   <<: *track-base
+  #   container_name: mt5-<track2>
+  #   env_file: ./tracks/<track2>.env
+  #   ports: ["127.0.0.1:3002:3000"]   # host で tailscale serve --bg localhost:3002
+  #   volumes:
+  #     - ./tracks/<track2>/config:/config
+  #     - ./artifacts/<track2>:/artifacts:ro
+  #     - ./data/<track2>:/output
+  #   secrets: [titanfx_demo2_password]
